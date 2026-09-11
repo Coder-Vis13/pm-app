@@ -1,6 +1,6 @@
 import { supabase } from "../lib/supabaseClient";
 import { AppError } from "../lib/errors";
-import { PriorityLevel, StatusType, Task, SectionTask, SectionTaskSummary, } from "../types/database";
+import { PriorityLevel, StatusType, Task, SectionTask, SectionTaskSummary, MyTask, } from "../types/database";
 import {
   requireProjectAccess,
   validateTaskAccess,
@@ -35,6 +35,26 @@ interface UpdateTaskInput {
   expectedUpdatedAt: string;
 }
 
+async function getDependenciesForTasks(taskIds: string[]) {
+  if (taskIds.length === 0) {
+    return [];
+  }
+
+  const idList = taskIds.join(",");
+
+  const { data, error } = await supabase
+    .from("task_dependencies")
+    .select("blocking_task_id, blocked_task_id")
+    .or(
+      `blocking_task_id.in.(${idList}),blocked_task_id.in.(${idList})`
+    );
+
+  if (error) {
+    throw new AppError(error.message, 500);
+  }
+
+  return data ?? [];
+}
 
 async function checkParentTask(
   parentTaskId: string,
@@ -257,7 +277,9 @@ if (subtaskError) {
   throw new AppError(subtaskError.message, 500);
 }
 
-  const deps = await getProjectDeps(projectId);
+  //const deps = await getProjectDeps(projectId);
+
+  const deps = await getDependenciesForTasks(taskIds);
 
   const assigneesByTask = new Map<string, typeof assignees>();
 
@@ -389,7 +411,9 @@ export async function getSubtasks(
     throw new AppError(assigneeError.message, 500);
   }
 
-  const deps = await getProjectDeps(parentTask.project_id!);
+  //const deps = await getProjectDeps(parentTask.project_id!);
+
+  const deps = await getDependenciesForTasks(taskIds);
 
   const assigneesByTask = new Map<string, typeof assignees>();
 
@@ -604,8 +628,12 @@ export async function updateTaskStatus(
     );
   }
 
+  try {
   await taskHistoryEntry(taskId);
-
+} catch (error) {
+  console.error("STATUS UPDATE - history entry failed:", error);
+  throw error;
+}
   return data;
 }
 
@@ -724,6 +752,200 @@ export async function deleteTask(
       500
     );
   }
+}
+
+
+export async function listMyTasks(userId: string): Promise<MyTask[]> {
+  const { data: assignments, error: assignmentError } = await supabase
+    .from("task_assignees")
+    .select("task_id")
+    .eq("user_id", userId);
+
+  if (assignmentError) {
+    throw new AppError(assignmentError.message, 500);
+  }
+
+  const taskIds = [
+    ...new Set(
+      (assignments ?? [])
+        .map((assignment) => assignment.task_id)
+        .filter((taskId): taskId is string => Boolean(taskId))
+    ),
+  ];
+
+  if (taskIds.length === 0) {
+    return [];
+  }
+
+  const { data: tasks, error: taskError } = await supabase
+    .from("task")
+    .select("*")
+    .in("id", taskIds)
+    .eq("is_deleted", false)
+    .order("due_date", { ascending: true, nullsFirst: false })
+    .order("position", { ascending: true });
+
+  if (taskError) {
+    throw new AppError(taskError.message, 500);
+  }
+
+  if (!tasks || tasks.length === 0) {
+    return [];
+  }
+
+  const projectIds = [
+    ...new Set(
+      tasks
+        .map((task) => task.project_id)
+        .filter((projectId): projectId is string => Boolean(projectId))
+    ),
+  ];
+
+  const sectionIds = [
+    ...new Set(
+      tasks
+        .map((task) => task.section_id)
+        .filter((sectionId): sectionId is string => Boolean(sectionId))
+    ),
+  ];
+
+  const [
+    assigneesResult,
+    subtasksResult,
+    projectsResult,
+    sectionsResult,
+  ] = await Promise.all([
+    supabase
+      .from("task_assignees")
+      .select(
+        "id, task_id, user_id, app_user(id, name, email, job_role_id)"
+      )
+      .in("task_id", taskIds),
+
+    supabase
+      .from("task")
+      .select("id, parent_task_id")
+      .in("parent_task_id", taskIds)
+      .eq("is_deleted", false),
+
+    supabase
+      .from("project")
+      .select("id, name")
+      .in("id", projectIds)
+      .eq("is_deleted", false),
+
+    supabase
+      .from("section")
+      .select("id, name")
+      .in("id", sectionIds)
+      .eq("is_deleted", false),
+  ]);
+
+  if (assigneesResult.error) {
+    throw new AppError(assigneesResult.error.message, 500);
+  }
+
+  if (subtasksResult.error) {
+    throw new AppError(subtasksResult.error.message, 500);
+  }
+
+  if (projectsResult.error) {
+    throw new AppError(projectsResult.error.message, 500);
+  }
+
+  if (sectionsResult.error) {
+    throw new AppError(sectionsResult.error.message, 500);
+  }
+
+  // const dependencyResults = await Promise.all(
+  //   projectIds.map((projectId) => getProjectDeps(projectId))
+  // );
+
+  // const dependencies = dependencyResults.flat();
+
+  const dependencies = await getDependenciesForTasks(taskIds);
+
+  const assigneesByTask = new Map<
+    string,
+    typeof assigneesResult.data
+  >();
+
+  for (const assignee of assigneesResult.data ?? []) {
+    if (!assignee.task_id) continue;
+
+    const taskAssignees =
+      assigneesByTask.get(assignee.task_id) ?? [];
+
+    taskAssignees.push(assignee);
+    assigneesByTask.set(
+      assignee.task_id,
+      taskAssignees
+    );
+  }
+
+  const subtaskCountByTask = new Map<string, number>();
+
+  for (const subtask of subtasksResult.data ?? []) {
+    if (!subtask.parent_task_id) continue;
+
+    subtaskCountByTask.set(
+      subtask.parent_task_id,
+      (subtaskCountByTask.get(subtask.parent_task_id) ?? 0) + 1
+    );
+  }
+
+  const dependencyCountByTask = new Map<string, number>();
+
+  for (const dependency of dependencies) {
+    if (dependency.blocking_task_id) {
+      dependencyCountByTask.set(
+        dependency.blocking_task_id,
+        (dependencyCountByTask.get(dependency.blocking_task_id) ?? 0) + 1
+      );
+    }
+
+    if (dependency.blocked_task_id) {
+      dependencyCountByTask.set(
+        dependency.blocked_task_id,
+        (dependencyCountByTask.get(dependency.blocked_task_id) ?? 0) + 1
+      );
+    }
+  }
+
+  const projectById = new Map(
+    (projectsResult.data ?? []).map((project) => [
+      project.id,
+      project,
+    ])
+  );
+
+  const sectionById = new Map(
+    (sectionsResult.data ?? []).map((section) => [
+      section.id,
+      section,
+    ])
+  );
+
+  return tasks.map((task) => ({
+    ...task,
+
+    assignees:
+      (assigneesByTask.get(task.id) ?? []) as SectionTask["assignees"],
+
+    dependencyCount:
+      dependencyCountByTask.get(task.id) ?? 0,
+
+    subtaskCount:
+      subtaskCountByTask.get(task.id) ?? 0,
+
+    project: task.project_id
+      ? projectById.get(task.project_id) ?? null
+      : null,
+
+    section: task.section_id
+      ? sectionById.get(task.section_id) ?? null
+      : null,
+  }));
 }
 
 // Days a task has spent in blocked or waiting status (from history)

@@ -76,6 +76,11 @@ export interface Task {
   version: number;
 }
 
+export interface MyTask extends SectionTask {
+  project: Pick<Project, "id" | "name"> | null;
+  section: Pick<Section, "id" | "name"> | null;
+}
+
 export interface Subtask extends Task {}
 
 export interface SectionTask extends Task {

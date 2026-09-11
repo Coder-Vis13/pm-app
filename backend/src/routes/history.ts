@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import {
   getProjectHistory,
+  getTaskAssigneeEvents,
   getTaskHistory,
   getTaskStatusDuration,
 } from "../services/historyService";
@@ -21,6 +22,7 @@ router.get("/tasks/:taskId", async (req, res, next) => {
   }
 });
 
+// DEL LATER 
 router.get("/tasks/:taskId/segments", async (req, res, next) => {
   try {
     const userId = getUserId(req);
@@ -32,6 +34,7 @@ router.get("/tasks/:taskId/segments", async (req, res, next) => {
   }
 });
 
+// DEL LATER 
 router.get("/projects/:projectId", async (req, res, next) => {
   try {
     const userId = getUserId(req);
@@ -43,6 +46,7 @@ router.get("/projects/:projectId", async (req, res, next) => {
   }
 });
 
+// DEL LATER 
 router.get("/audit", async (_req, res, next) => {
   try {
     const result = await verifyAuditChain();
@@ -52,6 +56,7 @@ router.get("/audit", async (_req, res, next) => {
   }
 });
 
+// DEL LATER 
 router.get("/audit/entries", async (_req, res, next) => {
   try {
     const entries = await listAuditLog();
@@ -60,5 +65,21 @@ router.get("/audit/entries", async (_req, res, next) => {
     next(err);
   }
 });
+
+
+router.get("/tasks/:taskId/assignee-events", async (req, res, next) => {
+  try {
+    const userId = getUserId(req);
+
+    await validateTaskAccess(userId, req.params.taskId);
+
+    const events = await getTaskAssigneeEvents(req.params.taskId);
+
+    res.json(events);
+  } catch (err) {
+    next(err);
+  }
+});
+
 
 export default router;

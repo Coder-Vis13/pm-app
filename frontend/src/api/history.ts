@@ -1,5 +1,6 @@
 import { get } from "../lib/api-client";
 import type {
+  AssigneeEvent,
   StatusTimeline,
   TaskHistory,
 } from "../types/database";
@@ -25,10 +26,17 @@ const verifyAuditChain = () =>
 const getAuditEntries = () =>
   get("/api/history/audit/entries");
 
+const getTaskAssigneeEvents = (
+  taskId: string
+): Promise<AssigneeEvent[]> =>
+  get(`/api/history/tasks/${taskId}/assignee-events`);
+
+  
 export {
   getTaskHistory,
   getTaskStatusSegments,
   getProjectHistory,
   verifyAuditChain,
   getAuditEntries,
+  getTaskAssigneeEvents
 };

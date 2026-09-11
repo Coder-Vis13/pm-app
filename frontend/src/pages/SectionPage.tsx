@@ -24,7 +24,7 @@ import type {
   StatusType,
 } from "@/types/database";
 
-import { SectionTaskTable } from "./SectionTaskTable";
+import { TaskTable } from "./TaskTable";
 import {
   ErrorState,
   PAGE_CONTAINER,
@@ -278,11 +278,11 @@ function handleCreateSubtask(parentTaskId: string) {
             </TabsList>
           </Tabs>
 
-  <SectionTaskTable
+  <TaskTable
   tasks={tasks}
   loading={loading}
   error={error}
-  tabLabel={activeTabLabel}
+  emptyLabel={activeTabLabel}
   sorting={sorting}
   onSortingChange={setSorting}
   onTaskUpdated={() =>
@@ -291,6 +291,7 @@ function handleCreateSubtask(parentTaskId: string) {
   onAddSubtask={handleCreateSubtask}
   taskToOpen={taskToOpen}
   onTaskOpened={() => setTaskToOpen(null)}
+  showProjectContext={false}
 />
 <CreateTaskDialog
   open={createTaskOpen}

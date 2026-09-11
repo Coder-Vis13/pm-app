@@ -11,10 +11,14 @@ import type {
   SectionTaskSummary,
   SectionTask,
   Subtask,
+  MyTask,
 } from "../types/database";
 
 const getTasks = (projectId: string): Promise<Task[]> =>
   get(`/api/tasks/project/${projectId}`);
+
+const getMyTasks = (): Promise<MyTask[]> =>
+  get("/api/tasks/my");
 
 const createTask = (
   projectId: string,
@@ -152,6 +156,7 @@ const removeTaskAssignee = (
 
 export {
   getTasks,
+  getMyTasks,
   createTask,
   getTask,
   getSectionTasks,

@@ -62,7 +62,21 @@ export function SidebarLayout({ appName }: SidebarLayoutProps) {
   const renderMainContent = () => {
     switch (selected.type) {
       case "home":
-        return <HomePage />;
+  return (
+    <HomePage
+      onProjectSelect={(projectId) =>
+        selectNav({
+          type: "project",
+          projectId,
+        })
+      }
+      onMyTasksSelect={() =>
+        selectNav({
+          type: "my-tasks",
+        })
+      }
+    />
+  );
       case "my-tasks":
         return <MyTasksPage />;
       case "account":
@@ -98,7 +112,21 @@ export function SidebarLayout({ appName }: SidebarLayoutProps) {
   );
       }
       default:
-        return <HomePage />;
+  return (
+    <HomePage
+      onProjectSelect={(projectId) =>
+        selectNav({
+          type: "project",
+          projectId,
+        })
+      }
+      onMyTasksSelect={() =>
+        selectNav({
+          type: "my-tasks",
+        })
+      }
+    />
+  );
     }
   };
 

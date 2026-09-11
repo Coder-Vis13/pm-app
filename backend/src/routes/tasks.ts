@@ -12,6 +12,7 @@ import {
   getSectionTaskSummary,
   updateTask,
   updateTaskStatus,
+  listMyTasks,
 } from "../services/taskService";
 import { getCriticalPathToTask, getTaskImpact } from "../services/dependencyAnalysisService";
 import { addAssignee, listAssignees, removeAssignee } from "../services/assigneeService";
@@ -28,6 +29,27 @@ router.get("/project/:projectId", async (req, res, next) => {
     next(err);
   }
 });
+
+
+/**
+ * Get all active tasks assigned to the current user.
+ *
+ * IMPORTANT:
+ * This route must stay above "/:taskId" so "my" is not
+ * interpreted as a task ID.
+ */
+router.get("/my", async (req, res, next) => {
+  try {
+    const userId = getUserId(req);
+
+    const tasks = await listMyTasks(userId);
+
+    res.json(tasks);
+  } catch (err) {
+    next(err);
+  }
+});
+
 
 router.post("/project/:projectId", async (req, res, next) => {
   try {

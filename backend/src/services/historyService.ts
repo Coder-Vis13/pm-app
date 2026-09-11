@@ -398,7 +398,6 @@ export function extractAssigneeHandoffs(
 
 
 
-
 //How often a user moved tasks to in_progress — for context switching
 export async function getUserProgressMetrics(userId: string, projectId: string) {
   const history = await getProjectHistory(projectId);
@@ -430,5 +429,20 @@ export async function getUserProgressMetrics(userId: string, projectId: string) 
     concurrentInProgress: inProgressTasks?.length ?? 0,
     tasksStarted: uniqueTaskSwitches.size,
   };
+}
+
+
+export async function getTaskAssigneeEvents(
+  taskId: string
+): Promise<AssigneeEvent[]> {
+  const { data, error } = await supabase
+    .from("assignee_event")
+    .select("*")
+    .eq("task_id", taskId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw new AppError(error.message, 500);
+
+  return (data ?? []) as AssigneeEvent[];
 }
 
