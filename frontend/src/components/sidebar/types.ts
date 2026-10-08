@@ -3,7 +3,6 @@ import type { Project, Section } from "../../types/database";
 export type NavTarget =
   | { type: "home" }
   | { type: "my-tasks" }
-  | { type: "account" }
   | { type: "project"; projectId: string }
   | { type: "section"; projectId: string; sectionId: string };
 

@@ -518,28 +518,4 @@ export async function getProjectWorkflowMetrics(projectId: string, userId: strin
   };
 }
 
-//risk score for all project tasks 
-// export async function calcProjectRiskScores(projectId: string, userId: string) {
-//   await requireProjectAccess(userId, projectId, "editor");
-
-//   const { supabase } = await import("../lib/supabaseClient");
-//   const { AppError } = await import("../lib/errors");
-
-//   const { data: tasks, error } = await supabase
-//     .from("task")
-//     .select("id")
-//     .eq("project_id", projectId)
-//     .eq("is_deleted", false);
-
-//   if (error) throw new AppError(error.message, 500);
-
-//   const scores: { taskId: string; riskScore: number }[] = [];
-//   for (const task of tasks ?? []) {
-//     const riskScore = await calcRiskScore(task.id);
-//     scores.push({ taskId: task.id, riskScore });
-//   }
-
-//   return scores;
-// }
-
 export { getUserProgressMetrics as getUserFocusSignals };

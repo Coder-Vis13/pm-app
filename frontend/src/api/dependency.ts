@@ -1,5 +1,5 @@
 import { get, post, del } from "../lib/api-client";
-import type { TaskDep } from "../types/database";
+import type { StatusType, TaskDep } from "../types/database";
 
 
 export interface TaskDependencyDetails {
@@ -7,8 +7,20 @@ export interface TaskDependencyDetails {
   blocking_task_id: string | null;
   blocked_task_id: string | null;
   created_at: string | null;
+
   blocking_task_title: string | null;
+  blocking_task_status: StatusType | null;
+  blocking_task_start_date: string | null;
+  blocking_task_due_date: string | null;
+  blocking_task_is_deleted: boolean | null;
+
   blocked_task_title: string | null;
+  blocked_task_status: StatusType | null;
+  blocked_task_start_date: string | null;
+  blocked_task_due_date: string | null;
+  blocked_task_is_deleted: boolean | null;
+
+  date_conflict: boolean;
 }
 
 

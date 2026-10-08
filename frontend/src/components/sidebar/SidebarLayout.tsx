@@ -8,7 +8,6 @@ import { HomePage } from "../../pages/HomePage";
 import { MyTasksPage } from "../../pages/MyTasksPage";
 import { ProjectPage } from "../../pages/ProjectPage";
 import { SectionPage } from "../../pages/SectionPage";
-import { AccountPage } from "../../pages/AccountPage";
 
 interface SidebarLayoutProps {
   appName?: string;
@@ -79,8 +78,6 @@ export function SidebarLayout({ appName }: SidebarLayoutProps) {
   );
       case "my-tasks":
         return <MyTasksPage />;
-      case "account":
-        return <AccountPage />;
       case "project": {
         const project = projects.find((item) => item.id === selected.projectId);
         return (

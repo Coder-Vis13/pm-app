@@ -7,7 +7,6 @@ import {
 } from "./accessService";
 import { checkSectionInProject } from "./sectionService";
 import { taskHistoryEntry } from "./auditService";
-import { getProjectDeps } from "./dependencyService";
 
 interface CreateTaskInput {
   title: string;
@@ -458,44 +457,6 @@ export async function getSubtasks(
 }
 
 
-//update task fields
-// export async function updateTask(
-//   taskId: string,
-//   userId: string,
-//   updates: UpdateTaskInput
-// ) {
-//   const task = await validateTaskAccess(userId, taskId);
-//   await requireProjectAccess(userId, task.project_id!, "editor");
-
-//   if (updates.sectionId) {
-//     await checkSectionInProject(updates.sectionId, task.project_id!);
-//   }
-
-//   const payload: Record<string, unknown> = {
-//     updated_at: new Date().toISOString(),
-//   };
-
-//   if (updates.title !== undefined) payload.title = updates.title;
-//   if (updates.description !== undefined) payload.description = updates.description;
-//   if (updates.priority !== undefined) payload.priority = updates.priority;
-//   if (updates.startDate !== undefined) payload.start_date = updates.startDate;
-//   if (updates.dueDate !== undefined) payload.due_date = updates.dueDate;
-//   if (updates.sectionId !== undefined) payload.section_id = updates.sectionId;
-//   if (updates.delayCauseId !== undefined) payload.delay_cause_id = updates.delayCauseId;
-
-//   const { data, error } = await supabase
-//     .from("task")
-//     .update(payload)
-//     .eq("id", taskId)
-//     .select()
-//     .single();
-
-//   if (error) throw new AppError(error.message, 500);
-
-//   await taskHistoryEntry(taskId);
-//   return data;
-// }
-
 
 // Update task fields using optimistic concurrency control.
 // The update only succeeds if the task has not changed since the client last read it.
@@ -570,32 +531,6 @@ export async function updateTask(
   return data;
 }
 
-//update status of task
-// export async function updateTaskStatus(
-//   taskId: string,
-//   userId: string,
-//   status: StatusType
-// ) {
-//   const task = await validateTaskAccess(userId, taskId);
-//   await requireProjectAccess(userId, task.project_id!, "editor");
-
-//   const { data, error } = await supabase
-//     .from("task")
-//     .update({
-//       status,
-//       updated_at: new Date().toISOString(),
-//     })
-//     .eq("id", taskId)
-//     .select()
-//     .single();
-
-//   if (error) throw new AppError(error.message, 500);
-
-//   await taskHistoryEntry(taskId);
-//   return data;
-// }
-
-
 
 // Update task status using optimistic concurrency control.
 // Prevents an older client from overwriting a newer status change.
@@ -639,64 +574,6 @@ export async function updateTaskStatus(
 }
   return data;
 }
-
-
-//Editor check → soft delete (compacts positions and logs history via DB triggers)
-// export async function deleteTask(taskId: string, userId: string) {
-//   const task = await validateTaskAccess(userId, taskId);
-//   await requireProjectAccess(userId, task.project_id!, "editor");
-
-//   const { error } = await supabase
-//     .from("task")
-//     .update({
-//       is_deleted: true,
-//       deleted_at: new Date().toISOString(),
-//       updated_at: new Date().toISOString(),
-//     })
-//     .eq("id", taskId);
-
-//   if (error) throw new AppError(error.message, 500);
-
-//   await taskHistoryEntry(taskId);
-// }
-
-
-// // Soft-delete a task only if the client is deleting the version it last read.
-// export async function deleteTask(
-//   taskId: string,
-//   userId: string,
-//   expectedUpdatedAt: string
-// ) {
-//   const task = await validateTaskAccess(userId, taskId);
-//   await requireProjectAccess(userId, task.project_id!, "editor");
-
-//   const now = new Date().toISOString();
-
-//   const { data, error } = await supabase
-//     .from("task")
-//     .update({
-//       is_deleted: true,
-//       deleted_at: now,
-//       updated_at: now,
-//     })
-//     .eq("id", taskId)
-//     .eq("updated_at", expectedUpdatedAt)
-//     .select()
-//     .maybeSingle();
-
-//   if (error) {
-//     throw new AppError(error.message, 500);
-//   }
-
-//   if (!data) {
-//     throw new AppError(
-//       "Task was changed by another user. Refresh the task before deleting it.",
-//       409
-//     );
-//   }
-
-//   await taskHistoryEntry(taskId);
-// }
 
 
 export async function deleteTask(

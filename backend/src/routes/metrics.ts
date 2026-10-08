@@ -54,16 +54,6 @@ router.get("/projects/:projectId/sections/progress", async (req, res, next) => {
   }
 });
 
-// router.post("/projects/:projectId/risk-scores/recompute", async (req, res, next) => {
-//   try {
-//     const userId = getUserId(req);
-//     const scores = await calcProjectRiskScores(req.params.projectId, userId);
-//     res.json(scores);
-//   } catch (err) {
-//     next(err);
-//   }
-// });
-
 router.get("/projects/:projectId/users/:targetUserId/focus", async (req, res, next) => {
   try {
     const userId = getUserId(req);

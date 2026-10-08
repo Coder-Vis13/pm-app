@@ -270,10 +270,10 @@ setError(null);
     try {
       setCreating(true);
       setError(null);
-let task;
+
 
 if (taskType === "subtask") {
-  task = await createSubtask(parentTaskId, {
+  await createSubtask(parentTaskId, {
     title: trimmedTitle,
     description: description.trim() || undefined,
     priority,
@@ -285,7 +285,7 @@ if (taskType === "subtask") {
       : undefined,
   });
 } else {
-  task = await createTask(projectId, {
+  await createTask(projectId, {
     title: trimmedTitle,
     sectionId,
     description: description.trim() || undefined,

@@ -15,7 +15,6 @@ import {
   WaitingMetrics,
 } from "../types/database";
 import {
-  AnomalyType,
   ProjectAnomalyResults,
 } from "./anomalyDetectionService";
 

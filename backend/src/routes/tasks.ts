@@ -14,7 +14,7 @@ import {
   updateTaskStatus,
   listMyTasks,
 } from "../services/taskService";
-import { getCriticalPathToTask, getTaskImpact } from "../services/dependencyAnalysisService";
+import { getTaskImpact } from "../services/dependencyAnalysisService";
 import { addAssignee, listAssignees, removeAssignee } from "../services/assigneeService";
 import { StatusType } from "../types/database";
 
@@ -269,16 +269,6 @@ router.get("/:taskId/impact", async (req, res, next) => {
   }
 });
 
-router.get("/:taskId/critical-path", async (req, res, next) => {
-  try {
-    const userId = getUserId(req);
-    await getTaskById(req.params.taskId, userId);
-    const path = await getCriticalPathToTask(req.params.taskId);
-    res.json(path);
-  } catch (err) {
-    next(err);
-  }
-});
 
 router.get("/:taskId/assignees", async (req, res, next) => {
   try {

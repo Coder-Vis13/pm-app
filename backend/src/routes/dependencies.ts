@@ -3,21 +3,11 @@ import { getUserId } from "../utils/auth";
 import {
   createDep,
   deleteDep,
-  listDeps,
   listTaskDependencies
 } from "../services/dependencyService";
 
 const router = Router();
 
-router.get("/task/:taskId", async (req, res, next) => {
-  try {
-    const userId = getUserId(req);
-    const deps = await listDeps(req.params.taskId, userId);
-    res.json(deps);
-  } catch (err) {
-    next(err);
-  }
-});
 
 router.post("/", async (req, res, next) => {
   try {

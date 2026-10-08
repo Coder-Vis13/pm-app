@@ -165,13 +165,6 @@ export interface AssigneeHandoff {
   gapHours: number | null;
 }
 
-export interface CriticalPathResult {
-  targetTaskId: string;
-  chain: Task[];
-  totalDurationDays: number;
-  estimatedCompletionDate: string | null;
-}
-
 export interface TaskImpact {
   taskId: string;
   directDependents: number;

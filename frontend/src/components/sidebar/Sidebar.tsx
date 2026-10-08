@@ -1,7 +1,7 @@
 import { Home, ListTodo } from "lucide-react";
 import type { SidebarState } from "./useSidebarState";
 import type { ProjectWithSections } from "./types";
-import { SidebarHeader, SidebarAccount } from "./SidebarChrome";
+import { SidebarHeader } from "./SidebarChrome";
 import { SidebarNavItem } from "./SidebarNavItem";
 import { ProjectsSectionHeader } from "./ProjectsSectionHeader";
 import { ProjectRow } from "./ProjectRow";
@@ -190,10 +190,6 @@ export function Sidebar({
             )}
           </nav>
 
-          <SidebarAccount
-            selected={selected}
-            onSelect={() => selectNav({ type: "account" })}
-          />
         </div>
       </aside>
     </>

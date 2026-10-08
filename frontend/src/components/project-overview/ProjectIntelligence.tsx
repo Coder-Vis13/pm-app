@@ -4,7 +4,6 @@ import {
   filterIntelligenceCards,
   type IntelligenceCardViewModel,
   type IntelligenceFilter,
-  type ProjectOverviewViewModel,
 } from "@/data/project-overview/formatters";
 import { cn } from "@/lib/utils";
 import { IntelligenceCard } from "./IntelligenceCard";

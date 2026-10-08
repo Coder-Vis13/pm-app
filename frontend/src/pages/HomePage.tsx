@@ -6,7 +6,7 @@ import {
   FolderKanban,
 } from "lucide-react";
 
-import { TaskDetailDialog } from "./TaskDetailDialog";
+import { TaskDetailDialog } from "@/components/task-detail-dialog/TaskDetailDialog";
 
 import { getWorkspaces } from "@/api/workspace";
 import { getProjects } from "@/api/project";

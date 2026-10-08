@@ -1,7 +1,6 @@
 import { supabase } from "../lib/supabaseClient";
 import { AppError } from "../lib/errors";
 import { TaskDep } from "../types/database";
-import { possibleCycle } from "../utils/graph";
 import { requireProjectAccess, validateTaskAccess } from "./accessService";
 
 //All deps where blocked task is in project
@@ -28,81 +27,6 @@ export async function getProjectDeps(
   if (error) throw new AppError(error.message, 500);
   return (data ?? []) as TaskDep[];
 }
-
-//check for self-loops and if tasks are in the same project
-export async function validateDep(
-  blockingTaskId: string,
-  blockedTaskId: string
-) {
-  if (blockingTaskId === blockedTaskId) {
-    throw new AppError("A task cannot depend on itself", 400);
-  }
-
-  const { data: blocking, error: bErr } = await supabase
-    .from("task")
-    .select("id, project_id")
-    .eq("id", blockingTaskId)
-    .eq("is_deleted", false)
-    .maybeSingle();
-
-  const { data: blocked, error: blErr } = await supabase
-    .from("task")
-    .select("id, project_id")
-    .eq("id", blockedTaskId)
-    .eq("is_deleted", false)
-    .maybeSingle();
-
-  if (bErr || blErr) throw new AppError("Failed to load tasks", 500);
-  if (!blocking || !blocked) throw new AppError("Task not found", 404);
-  if (blocking.project_id !== blocked.project_id) {
-    throw new AppError("Tasks must belong to the same project", 400);
-  }
-
-  const deps = await getProjectDeps(blocking.project_id!);
-  if (possibleCycle(blockingTaskId, blockedTaskId, deps)) {
-    throw new AppError("This dependency would create a circular loop", 400);
-  }
-}
-
-//Validate dep → editor check → insert
-// export async function createDep(
-//   blockingTaskId: string,
-//   blockedTaskId: string,
-//   userId: string
-// ) {
-//   await validateDep(blockingTaskId, blockedTaskId);
-
-//   const { data: blocked, error: taskError } = await supabase
-//     .from("task")
-//     .select("project_id")
-//     .eq("id", blockedTaskId)
-//     .single();
-
-//   if (taskError) throw new AppError(taskError.message, 500);
-
-//   await requireProjectAccess(userId, blocked.project_id!, "editor");
-
-//   const { data, error } = await supabase
-//     .from("task_dependencies")
-//     .insert({
-//       blocking_task_id: blockingTaskId,
-//       blocked_task_id: blockedTaskId,
-//       created_at: new Date().toISOString(),
-//     })
-//     .select()
-//     .single();
-
-//   if (error) {
-//     if (error.code === "23505") {
-//       throw new AppError("Dependency already exists", 400);
-//     }
-//     throw new AppError(error.message, 500);
-//   }
-
-//   return data;
-// }
-
-
 
 export async function createDep(
   blockingTaskId: string,
@@ -155,18 +79,6 @@ export async function createDep(
 }
 
 
-//Deps in both directions for a task
-export async function listDeps(taskId: string, userId: string) {
-  await validateTaskAccess(userId, taskId);
-
-  const { data, error } = await supabase
-    .from("task_dependencies")
-    .select("*")
-    .or(`blocking_task_id.eq.${taskId},blocked_task_id.eq.${taskId}`);
-
-  if (error) throw new AppError(error.message, 500);
-  return data ?? [];
-}
 //Load dep → find project → editor check → delete
 export async function deleteDep(depId: string, userId: string) {
   const { data: dep, error: depError } = await supabase
@@ -216,7 +128,7 @@ export async function listTaskDependencies(
   taskId: string,
   userId: string
 ) {
-  await validateTaskAccess(userId, taskId);
+  const currentTask = await validateTaskAccess(userId, taskId);
 
   const { data: deps, error: depError } = await supabase
     .from("task_dependencies")
@@ -242,24 +154,66 @@ export async function listTaskDependencies(
 
   const { data: tasks, error: taskError } = await supabase
     .from("task")
-    .select("id, title")
+    .select(
+      "id, title, status, start_date, due_date, is_deleted"
+    )
     .in("id", taskIds);
 
   if (taskError) {
     throw new AppError(taskError.message, 500);
   }
 
-  const titleById = new Map(
-    (tasks ?? []).map((task) => [task.id, task.title])
+  const taskById = new Map(
+    (tasks ?? []).map((task) => [task.id, task])
   );
 
-  return deps.map((dep) => ({
-    ...dep,
-    blocking_task_title: dep.blocking_task_id
-      ? titleById.get(dep.blocking_task_id) ?? "Unknown task"
-      : null,
-    blocked_task_title: dep.blocked_task_id
-      ? titleById.get(dep.blocked_task_id) ?? "Unknown task"
-      : null,
-  }));
+  const currentTaskData = taskById.get(currentTask.id) ?? currentTask;
+
+  return deps.map((dep) => {
+    const blockingTask = dep.blocking_task_id
+      ? taskById.get(dep.blocking_task_id)
+      : undefined;
+    const blockedTask = dep.blocked_task_id
+      ? taskById.get(dep.blocked_task_id)
+      : undefined;
+
+    const blockingDueDate = blockingTask?.due_date
+      ? new Date(blockingTask.due_date).getTime()
+      : null;
+    const blockedStartDate = blockedTask?.start_date
+      ? new Date(blockedTask.start_date).getTime()
+      : null;
+    const blockedDueDate = blockedTask?.due_date
+      ? new Date(blockedTask.due_date).getTime()
+      : null;
+
+    const dateConflict =
+      blockingTask?.is_deleted === false &&
+      blockedTask?.is_deleted === false &&
+      blockingTask.status !== "done" &&
+      blockingDueDate !== null &&
+      ((blockedStartDate !== null &&
+        blockedStartDate < blockingDueDate) ||
+        (blockedDueDate !== null &&
+          blockedDueDate < blockingDueDate));
+
+    return {
+      ...dep,
+      blocking_task_title: blockingTask?.title ?? "Unknown task",
+      blocking_task_status: blockingTask?.status ?? null,
+      blocking_task_start_date: blockingTask?.start_date ?? null,
+      blocking_task_due_date: blockingTask?.due_date ?? null,
+      blocking_task_is_deleted: blockingTask?.is_deleted ?? null,
+      blocked_task_title: blockedTask?.title ?? "Unknown task",
+      blocked_task_status:
+        blockedTask?.status ?? currentTaskData.status ?? null,
+      blocked_task_start_date:
+        blockedTask?.start_date ?? currentTaskData.start_date ?? null,
+      blocked_task_due_date:
+        blockedTask?.due_date ?? currentTaskData.due_date ?? null,
+      blocked_task_is_deleted:
+        blockedTask?.is_deleted ?? currentTaskData.is_deleted ?? null,
+      date_conflict: dateConflict,
+    };
+  });
 }

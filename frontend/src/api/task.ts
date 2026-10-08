@@ -1,6 +1,5 @@
 import { get, post, patch, del } from "../lib/api-client";
 import type {
-  CriticalPathResult,
   PriorityLevel,
   StatusType,
   Task,
@@ -125,11 +124,6 @@ const getTaskImpact = (
 ): Promise<TaskImpact> =>
   get(`/api/tasks/${taskId}/impact`);
 
-const getTaskCriticalPath = (
-  taskId: string
-): Promise<CriticalPathResult> =>
-  get(`/api/tasks/${taskId}/critical-path`);
-
 const getTaskAssignees = (
   taskId: string
 ): Promise<TaskAssignee[]> =>
@@ -166,7 +160,6 @@ export {
   updateTaskStatus,
   getTaskDelayDays,
   getTaskImpact,
-  getTaskCriticalPath,
   getTaskAssignees,
   addTaskAssignee,
   removeTaskAssignee,
