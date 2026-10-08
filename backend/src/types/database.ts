@@ -69,6 +69,7 @@ export interface Task {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  updated_by: string;
   deleted_at: string | null;
   is_deleted: boolean;
   status: StatusType;
@@ -112,6 +113,7 @@ export interface TaskHistory {
   user_id: string;
   event_type: string;
   created_at: string;
+  actor_id: string;
 }
 
 export interface AssigneeEvent {
@@ -123,6 +125,7 @@ export interface AssigneeEvent {
   from_value: string | null;
   to_value: string | null;
   created_at: string;
+  actor_id: string;
 }
 
 export interface ProjectInsight {

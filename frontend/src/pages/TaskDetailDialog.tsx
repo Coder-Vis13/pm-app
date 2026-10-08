@@ -97,6 +97,7 @@ interface ActivityEntry {
   id: string;
   label: string;
   detail?: string;
+  actorName: string;
   createdAt: string;
 }
 
@@ -1028,13 +1029,24 @@ export function TaskDetailDialog({
     </div>
   );
 }
-
 function buildActivity(
   history: TaskHistory[],
   assigneeEvents: AssigneeEvent[],
   members: ProjectMemberWithUser[]
 ): ActivityEntry[] {
   const entries: ActivityEntry[] = [];
+
+  const memberById = new Map(
+    members
+      .filter((member) => member.user_id)
+      .map((member) => [
+        member.user_id!,
+        member.app_user?.name ?? "A member",
+      ])
+  );
+
+  const getActorName = (actorId: string) =>
+    memberById.get(actorId) ?? "A member";
 
   const sortedHistory = [...history].sort(
     (a, b) =>
@@ -1050,10 +1062,13 @@ function buildActivity(
       continue;
     }
 
+    const actorName = getActorName(current.actor_id);
+
     if (current.event_type === "created" || !previous?.task_snapshot) {
       entries.push({
         id: `history-created-${current.id}`,
-        label: "Task created",
+        label: `${actorName} created the task`,
+        actorName,
         createdAt: current.created_at,
       });
 
@@ -1066,8 +1081,9 @@ function buildActivity(
     if (prev.status !== next.status) {
       entries.push({
         id: `status-${current.id}`,
-        label: "Status changed",
+        label: `${actorName} changed status`,
         detail: `${formatStatus(prev.status)} → ${formatStatus(next.status)}`,
+        actorName,
         createdAt: current.created_at,
       });
     }
@@ -1075,8 +1091,9 @@ function buildActivity(
     if (prev.priority !== next.priority) {
       entries.push({
         id: `priority-${current.id}`,
-        label: "Priority changed",
+        label: `${actorName} changed priority`,
         detail: `${formatPriority(prev.priority)} → ${formatPriority(next.priority)}`,
+        actorName,
         createdAt: current.created_at,
       });
     }
@@ -1084,8 +1101,9 @@ function buildActivity(
     if (prev.title !== next.title) {
       entries.push({
         id: `title-${current.id}`,
-        label: "Title changed",
+        label: `${actorName} changed the title`,
         detail: next.title ?? "",
+        actorName,
         createdAt: current.created_at,
       });
     }
@@ -1093,7 +1111,8 @@ function buildActivity(
     if (prev.description !== next.description) {
       entries.push({
         id: `description-${current.id}`,
-        label: "Description updated",
+        label: `${actorName} updated the description`,
+        actorName,
         createdAt: current.created_at,
       });
     }
@@ -1101,11 +1120,11 @@ function buildActivity(
     if (prev.start_date !== next.start_date) {
       entries.push({
         id: `start-date-${current.id}`,
-        label: "Start date changed",
-        detail:
-          next.start_date
-            ? formatDate(next.start_date)
-            : "Removed",
+        label: `${actorName} changed the start date`,
+        detail: next.start_date
+          ? formatDate(next.start_date)
+          : "Removed",
+        actorName,
         createdAt: current.created_at,
       });
     }
@@ -1113,30 +1132,30 @@ function buildActivity(
     if (prev.due_date !== next.due_date) {
       entries.push({
         id: `due-date-${current.id}`,
-        label: "Due date changed",
-        detail:
-          next.due_date
-            ? formatDate(next.due_date)
-            : "Removed",
+        label: `${actorName} changed the due date`,
+        detail: next.due_date
+          ? formatDate(next.due_date)
+          : "Removed",
+        actorName,
         createdAt: current.created_at,
       });
     }
   }
 
   for (const event of assigneeEvents) {
-    const member = members.find(
-      (item) => item.user_id === event.user_id
-    );
+    const affectedMember = event.user_id
+      ? memberById.get(event.user_id) ?? "A member"
+      : "A member";
 
-    const userName =
-      member?.app_user?.name ?? "A member";
+    const actorName = getActorName(event.actor_id);
 
     entries.push({
       id: `assignee-${event.id}`,
       label:
         event.event_type === "assignee_added"
-          ? `${userName} assigned`
-          : `${userName} unassigned`,
+          ? `${actorName} assigned ${affectedMember}`
+          : `${actorName} unassigned ${affectedMember}`,
+      actorName,
       createdAt: event.created_at,
     });
   }
@@ -1147,6 +1166,7 @@ function buildActivity(
       new Date(a.createdAt).getTime()
   );
 }
+
 
 function ActivityItem({
   entry,

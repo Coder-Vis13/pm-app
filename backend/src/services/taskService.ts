@@ -146,6 +146,7 @@ export async function createTask(input: CreateTaskInput) {
       priority,
       position: nextPosition,
       created_by: userId,
+      updated_by: userId,
       start_date: startDate ?? null,
       due_date: dueDate ?? null,
       status,
@@ -512,6 +513,7 @@ export async function updateTask(
 
   const payload: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
+    updated_by: userId,
   };
 
   if (updates.title !== undefined) {
@@ -609,9 +611,10 @@ export async function updateTaskStatus(
   const { data, error } = await supabase
     .from("task")
     .update({
-      status,
-      updated_at: new Date().toISOString(),
-    })
+  status,
+  updated_at: new Date().toISOString(),
+  updated_by: userId,
+})
     .eq("id", taskId)
     .eq("updated_at", expectedUpdatedAt)
     .select()
@@ -714,10 +717,11 @@ export async function deleteTask(
   const { data, error } = await supabase
     .from("task")
     .update({
-      is_deleted: true,
-      deleted_at: now,
-      updated_at: now,
-    })
+  is_deleted: true,
+  deleted_at: now,
+  updated_at: now,
+  updated_by: userId,
+})
     .eq("id", taskId)
     .eq("updated_at", expectedUpdatedAt)
     .select()

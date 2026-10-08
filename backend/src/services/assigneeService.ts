@@ -64,8 +64,9 @@ export async function addAssignee(
   const { data: updatedTask, error: taskError } = await supabase
     .from("task")
     .update({
-      updated_at: now,
-    })
+  updated_at: now,
+  updated_by: userId,
+})
     .eq("id", taskId)
     .eq("updated_at", expectedUpdatedAt)
     .select("id, updated_at")
@@ -145,8 +146,9 @@ export async function removeAssignee(
   const { data: updatedTask, error: taskError } = await supabase
     .from("task")
     .update({
-      updated_at: now,
-    })
+  updated_at: now,
+  updated_by: userId,
+})
     .eq("id", taskId)
     .eq("updated_at", expectedUpdatedAt)
     .select("id, updated_at")
