@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { SortingState } from "@tanstack/react-table";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { getMyTasks } from "@/api/task";
-import type { MyTask, StatusType } from "@/types/database";
+import { queryKeys } from "@/lib/query-keys";
+import type { StatusType } from "@/types/database";
 
 import { TaskTable } from "./TaskTable";
 import { ErrorState } from "./section-task-ui";
@@ -20,33 +22,27 @@ const TABS: {
 ];
 
 export function MyTasksPage() {
-  const [tasks, setTasks] = useState<MyTask[]>([]);
+  const queryClient = useQueryClient();
   const [selectedTab, setSelectedTab] = useState<"all" | StatusType>("all");
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
-  async function loadTasks() {
-    try {
-      setLoading(true);
-      setError(null);
+  const {
+    data: tasks = [],
+    isPending,
+    error,
+  } = useQuery({
+    queryKey: queryKeys.myTasks(),
+    queryFn: getMyTasks,
+  });
 
-      const data = await getMyTasks();
-      setTasks(data);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load your tasks."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+  const loading = isPending;
 
-  useEffect(() => {
-    void loadTasks();
-  }, []);
+  const errorMessage =
+    error instanceof Error
+      ? error.message
+      : error
+        ? "Failed to load your tasks."
+        : null;
 
   const filteredTasks = useMemo(() => {
     if (selectedTab === "all") {
@@ -59,10 +55,14 @@ export function MyTasksPage() {
   const activeTabLabel =
     TABS.find((tab) => tab.value === selectedTab)?.label ?? "All";
 
-  if (error && !loading) {
+  function refreshTasks() {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.myTasks() });
+  }
+
+  if (errorMessage && !loading) {
     return (
       <div className="p-8">
-        <ErrorState message={error} />
+        <ErrorState message={errorMessage} />
       </div>
     );
   }
@@ -117,7 +117,7 @@ export function MyTasksPage() {
           <TaskTable
             tasks={filteredTasks}
             loading={loading}
-            error={error}
+            error={errorMessage}
             emptyLabel={
               selectedTab === "all"
                 ? "My tasks"
@@ -125,7 +125,7 @@ export function MyTasksPage() {
             }
             sorting={sorting}
             onSortingChange={setSorting}
-            onTaskUpdated={loadTasks}
+            onTaskUpdated={refreshTasks}
             showProjectContext
           />
         </section>

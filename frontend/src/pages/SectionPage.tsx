@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ArrowLeft,
   Plus,
 } from "lucide-react";
 import type { SortingState } from "@tanstack/react-table";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,11 +19,10 @@ import {
   getSectionTasks,
 } from "@/api/task";
 
-import type {
-  SectionTask,
-  SectionTaskSummary,
-  StatusType,
-} from "@/types/database";
+import { invalidateAfterTaskChange } from "@/lib/invalidate-after-task-change";
+import { queryKeys } from "@/lib/query-keys";
+
+import type { StatusType } from "@/types/database";
 
 import { TaskTable } from "./TaskTable";
 import {
@@ -55,111 +55,72 @@ export function SectionPage({
   sectionId,
   sectionName,
 }: SectionPageProps) {
+  const queryClient = useQueryClient();
   const [selectedTab, setSelectedTab] = useState<TaskTab>("all");
-  const [summary, setSummary] = useState<SectionTaskSummary | null>(null);
-  const [tasks, setTasks] = useState<SectionTask[]>([]);
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [loading, setLoading] = useState(true);
-  const [summaryLoading, setSummaryLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [summaryError, setSummaryError] = useState<string | null>(null);
   const [createTaskOpen, setCreateTaskOpen] = useState(false);
   const [createTaskParentId, setCreateTaskParentId] = useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [taskToOpen, setTaskToOpen] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const {
+    data: summary = null,
+    isPending: summaryPending,
+    error: summaryQueryError,
+  } = useQuery({
+    queryKey: queryKeys.sectionSummary(projectId, sectionId),
+    queryFn: () => getSectionTaskSummary(projectId, sectionId),
+  });
 
-    async function loadSummary() {
-      try {
-        setSummaryLoading(true);
-        setSummaryError(null);
+  const {
+    data: tasks = [],
+    isPending: tasksPending,
+    error: tasksQueryError,
+  } = useQuery({
+    queryKey: queryKeys.sectionTasks(projectId, sectionId, selectedTab),
+    queryFn: () =>
+      getSectionTasks(
+        projectId,
+        sectionId,
+        selectedTab === "all" ? undefined : selectedTab
+      ),
+  });
 
-        const data = await getSectionTaskSummary(
-          projectId,
-          sectionId
-        );
+  const summaryLoading = summaryPending;
+  const loading = tasksPending;
 
-        if (!cancelled) {
-          setSummary(data);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setSummaryError(
-            err instanceof Error
-              ? err.message
-              : "Failed to load section summary."
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setSummaryLoading(false);
-        }
-      }
-    }
+  const summaryError =
+    summaryQueryError instanceof Error
+      ? summaryQueryError.message
+      : summaryQueryError
+        ? "Failed to load section summary."
+        : null;
 
-    loadSummary();
-
-    return () => {
-      cancelled = true;
-    };
-}, [projectId, sectionId, refreshKey]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadTasks() {
-      try {
-        setLoading(true);
-        setError(null);
-
-        const status =
-          selectedTab === "all" ? undefined : selectedTab;
-
-        const data = await getSectionTasks(
-          projectId,
-          sectionId,
-          status
-        );
-
-        if (!cancelled) {
-          setTasks(data);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Failed to load tasks."
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadTasks();
-
-    return () => {
-      cancelled = true;
-    };
-}, [projectId, sectionId, selectedTab, refreshKey]);
+  const error =
+    tasksQueryError instanceof Error
+      ? tasksQueryError.message
+      : tasksQueryError
+        ? "Failed to load tasks."
+        : null;
 
   const activeTabLabel =
     TABS.find((tab) => tab.value === selectedTab)?.label ?? "All";
 
-  function handleCreateTask() {
-  setCreateTaskParentId(null);
-  setCreateTaskOpen(true);
-}
+  function refreshSectionAfterTaskChange(taskId?: string) {
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.sectionSummary(projectId, sectionId),
+    });
+    invalidateAfterTaskChange(queryClient, { projectId, taskId });
+  }
 
-function handleCreateSubtask(parentTaskId: string) {
-  setCreateTaskParentId(parentTaskId);
-  setCreateTaskOpen(true);
-}
+  function handleCreateTask() {
+    setCreateTaskParentId(null);
+    setCreateTaskOpen(true);
+  }
+
+  function handleCreateSubtask(parentTaskId: string) {
+    setCreateTaskParentId(parentTaskId);
+    setCreateTaskOpen(true);
+  }
 
   return (
     <div className={PAGE_CONTAINER}>
@@ -186,17 +147,17 @@ function handleCreateSubtask(parentTaskId: string) {
             </div>
 
             <Button
-  type="button"
-  size="sm"
-  className="shrink-0"
-  onClick={handleCreateTask}
->
-  <Plus
-    className="size-3.5"
-    strokeWidth={1.75}
-  />
-  Create task
-</Button>
+              type="button"
+              size="sm"
+              className="shrink-0"
+              onClick={handleCreateTask}
+            >
+              <Plus
+                className="size-3.5"
+                strokeWidth={1.75}
+              />
+              Create task
+            </Button>
           </div>
         </header>
 
@@ -278,33 +239,31 @@ function handleCreateSubtask(parentTaskId: string) {
             </TabsList>
           </Tabs>
 
-  <TaskTable
-  tasks={tasks}
-  loading={loading}
-  error={error}
-  emptyLabel={activeTabLabel}
-  sorting={sorting}
-  onSortingChange={setSorting}
-  onTaskUpdated={() =>
-    setRefreshKey((value) => value + 1)
-  }
-  onAddSubtask={handleCreateSubtask}
-  taskToOpen={taskToOpen}
-  onTaskOpened={() => setTaskToOpen(null)}
-  showProjectContext={false}
-/>
-<CreateTaskDialog
-  open={createTaskOpen}
-  onClose={() => {
-    setCreateTaskOpen(false);
-    setCreateTaskParentId(null);
-  }}
-  projectId={projectId}
-  sectionId={sectionId}
-  sectionName={sectionName}
-  initialParentTaskId={createTaskParentId}
-  onCreated={() => setRefreshKey((value) => value + 1)}
-/>
+          <TaskTable
+            tasks={tasks}
+            loading={loading}
+            error={error}
+            emptyLabel={activeTabLabel}
+            sorting={sorting}
+            onSortingChange={setSorting}
+            onTaskUpdated={() => refreshSectionAfterTaskChange()}
+            onAddSubtask={handleCreateSubtask}
+            taskToOpen={taskToOpen}
+            onTaskOpened={() => setTaskToOpen(null)}
+            showProjectContext={false}
+          />
+          <CreateTaskDialog
+            open={createTaskOpen}
+            onClose={() => {
+              setCreateTaskOpen(false);
+              setCreateTaskParentId(null);
+            }}
+            projectId={projectId}
+            sectionId={sectionId}
+            sectionName={sectionName}
+            initialParentTaskId={createTaskParentId}
+            onCreated={() => refreshSectionAfterTaskChange()}
+          />
         </section>
       </div>
     </div>

@@ -1,23 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ArrowRight,
   CheckCircle2,
   Circle,
   FolderKanban,
 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { TaskDetailDialog } from "@/components/task-detail-dialog/TaskDetailDialog";
 
 import { getWorkspaces } from "@/api/workspace";
 import { getProjects } from "@/api/project";
-import { getProjectOverview } from "@/api/metrics";
+import { getHomeProjectOverviews } from "@/api/metrics";
 import { getMyTasks } from "@/api/task";
+import { invalidateAfterTaskChange } from "@/lib/invalidate-after-task-change";
+import { queryKeys } from "@/lib/query-keys";
 
 import type {
   MyTask,
-  Project,
   ProjectOverview,
-  Workspace,
 } from "@/types/database";
 
 import { Button } from "@/components/ui/button";
@@ -53,118 +54,82 @@ export function HomePage({
   onProjectSelect,
   onMyTasksSelect,
 }: HomePageProps) {
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectOverviews, setProjectOverviews] = useState<
-    Record<string, ProjectOverview>
-  >({});
-  const [myTasks, setMyTasks] = useState<MyTask[]>([]);
+  const queryClient = useQueryClient();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const workspacesQuery = useQuery({
+    queryKey: queryKeys.workspaces(),
+    queryFn: getWorkspaces,
+  });
 
-  async function loadHome() {
-    try {
-      setLoading(true);
-      setError(null);
+  const workspace = workspacesQuery.data?.[0] ?? null;
+  const workspaceId = workspace?.id;
+  const hasWorkspace = (workspacesQuery.data?.length ?? 0) > 0;
 
-      const workspaces = await getWorkspaces();
+  const projectsQuery = useQuery({
+    queryKey: queryKeys.projects(workspaceId ?? ""),
+    queryFn: () => getProjects(workspaceId!),
+    enabled: hasWorkspace && Boolean(workspaceId),
+  });
 
-      if (workspaces.length === 0) {
-        setWorkspace(null);
-        setProjects([]);
-        setProjectOverviews({});
-        setMyTasks([]);
-        return;
-      }
+  const myTasksQuery = useQuery({
+    queryKey: queryKeys.myTasks(),
+    queryFn: getMyTasks,
+    enabled: hasWorkspace,
+  });
 
-      const currentWorkspace = workspaces[0];
+  const projects = projectsQuery.data ?? [];
+  const myTasks = myTasksQuery.data ?? [];
 
-      const [workspaceProjects, assignedTasks] = await Promise.all([
-        getProjects(currentWorkspace.id),
-        getMyTasks(),
-      ]);
+  const projectIds = useMemo(
+    () => projects.map((project) => project.id),
+    [projects]
+  );
 
-      const overviewResults = await Promise.all(
-        workspaceProjects.map(async (project) => {
-          try {
-            const overview = await getProjectOverview(project.id);
-            return [project.id, overview] as const;
-          } catch {
-            return null;
-          }
-        })
-      );
+  const { data: homeOverviewsData } = useQuery({
+    queryKey: queryKeys.homeProjectOverviews(projectIds),
+    queryFn: async () => {
+      const result = await getHomeProjectOverviews(projectIds);
+      return result.overviews;
+    },
+    enabled: projectIds.length > 0,
+  });
 
-      const overviews: Record<string, ProjectOverview> = {};
+  const projectOverviews: Record<string, ProjectOverview> =
+    homeOverviewsData ?? {};
 
-      for (const result of overviewResults) {
-        if (result) {
-          overviews[result[0]] = result[1];
-        }
-      }
+  const loading =
+    workspacesQuery.isPending ||
+    (hasWorkspace &&
+      (projectsQuery.isPending || myTasksQuery.isPending));
 
-      setWorkspace(currentWorkspace);
-      setProjects(workspaceProjects);
-      setProjectOverviews(overviews);
-      setMyTasks(assignedTasks);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load home page."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function refreshHome() {
-  try {
-    setError(null);
-
-    const [workspaceProjects, assignedTasks] = await Promise.all([
-      workspace
-        ? getProjects(workspace.id)
-        : Promise.resolve([]),
-      getMyTasks(),
-    ]);
-
-    const overviewResults = await Promise.all(
-      workspaceProjects.map(async (project) => {
-        try {
-          const overview = await getProjectOverview(project.id);
-          return [project.id, overview] as const;
-        } catch {
-          return null;
-        }
-      })
-    );
-
-    const overviews: Record<string, ProjectOverview> = {};
-
-    for (const result of overviewResults) {
-      if (result) {
-        overviews[result[0]] = result[1];
-      }
+  const error = useMemo(() => {
+    if (workspacesQuery.error) {
+      return workspacesQuery.error instanceof Error
+        ? workspacesQuery.error.message
+        : "Failed to load home page.";
     }
 
-    setProjects(workspaceProjects);
-    setProjectOverviews(overviews);
-    setMyTasks(assignedTasks);
-  } catch (err) {
-    setError(
-      err instanceof Error
-        ? err.message
-        : "Failed to refresh home page."
-    );
-  }
-}
+    if (projectsQuery.error) {
+      return projectsQuery.error instanceof Error
+        ? projectsQuery.error.message
+        : "Failed to load home page.";
+    }
 
-  useEffect(() => {
-    void loadHome();
-  }, []);
+    if (myTasksQuery.error) {
+      return myTasksQuery.error instanceof Error
+        ? myTasksQuery.error.message
+        : "Failed to load home page.";
+    }
+
+    return null;
+  }, [workspacesQuery.error, projectsQuery.error, myTasksQuery.error]);
+
+  function retryLoad() {
+    void queryClient.invalidateQueries({
+      queryKey: queryKeys.workspaces(),
+    });
+  }
 
   const activeTasks = useMemo(
     () =>
@@ -217,7 +182,7 @@ export function HomePage({
             variant="outline"
             size="sm"
             className="mt-4"
-            onClick={() => void loadHome()}
+            onClick={retryLoad}
           >
             Try again
           </Button>
@@ -466,7 +431,14 @@ export function HomePage({
   open={selectedTaskId !== null}
   onClose={() => setSelectedTaskId(null)}
   onUpdated={() => {
-    void refreshHome();
+    const task =
+      selectedTaskId != null
+        ? myTasks.find((item) => item.id === selectedTaskId)
+        : undefined;
+    invalidateAfterTaskChange(queryClient, {
+      projectId: task?.project_id ?? undefined,
+      taskId: selectedTaskId ?? undefined,
+    });
   }}
 />
     </div>

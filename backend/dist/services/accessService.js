@@ -47,11 +47,21 @@ async function getTask(taskId) {
  * 2. Are listed in workspace_members.
  */
 async function hasWorkspaceAccess(userId, workspaceId) {
-    const { data: workspace, error: wsError } = await supabaseClient_1.supabase
-        .from("workspace")
-        .select("owner_user_id")
-        .eq("id", workspaceId)
-        .maybeSingle();
+    const [workspaceResult, membershipResult] = await Promise.all([
+        supabaseClient_1.supabase
+            .from("workspace")
+            .select("owner_user_id")
+            .eq("id", workspaceId)
+            .maybeSingle(),
+        supabaseClient_1.supabase
+            .from("workspace_members")
+            .select("id")
+            .eq("workspace_id", workspaceId)
+            .eq("user_id", userId)
+            .maybeSingle(),
+    ]);
+    const { data: workspace, error: wsError } = workspaceResult;
+    const { data: membership, error: memberError } = membershipResult;
     if (wsError)
         throw new errors_1.AppError(wsError.message, 500);
     if (!workspace)
@@ -60,13 +70,6 @@ async function hasWorkspaceAccess(userId, workspaceId) {
     if (workspace.owner_user_id === userId) {
         return true;
     }
-    //otherwise, check if the user was added as a workspace member
-    const { data: membership, error: memberError } = await supabaseClient_1.supabase
-        .from("workspace_members")
-        .select("id")
-        .eq("workspace_id", workspaceId)
-        .eq("user_id", userId)
-        .maybeSingle();
     if (memberError)
         throw new errors_1.AppError(memberError.message, 500);
     return Boolean(membership);
@@ -99,10 +102,12 @@ async function getProjectRole(userId, projectId) {
  - has workspace access (viewer by default)
  */
 async function hasProjectAccess(userId, projectId) {
-    const project = await getProject(projectId);
+    const [project, role] = await Promise.all([
+        getProject(projectId),
+        getProjectRole(userId, projectId),
+    ]);
     if (!project)
         return false;
-    const role = await getProjectRole(userId, projectId);
     if (role)
         return true;
     if (project.workspace_id) {
@@ -111,9 +116,13 @@ async function hasProjectAccess(userId, projectId) {
     return false;
 }
 async function requireProjectAccess(userId, projectId, minRole = "viewer") {
-    const project = (0, errors_1.assertFound)(await getProject(projectId), "Project");
+    const [projectData, projectRole] = await Promise.all([
+        getProject(projectId),
+        getProjectRole(userId, projectId),
+    ]);
+    const project = (0, errors_1.assertFound)(projectData, "Project");
     //check whether the user has an explicit role in this project
-    let role = await getProjectRole(userId, projectId);
+    let role = projectRole;
     // If they aren't a project member but belong to the workspace, they automatically get viewer access
     if (!role && project.workspace_id) {
         const inWorkspace = await hasWorkspaceAccess(userId, project.workspace_id);

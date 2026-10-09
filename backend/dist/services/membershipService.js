@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.removeUserFromProject = removeUserFromProject;
 exports.addProjectMember = addProjectMember;
+exports.listProjectMembers = listProjectMembers;
 const supabaseClient_1 = require("../lib/supabaseClient");
 const errors_1 = require("../lib/errors");
 const accessService_1 = require("./accessService");
@@ -48,4 +49,15 @@ async function addProjectMember(projectId, actorId, newUserId, role) {
     if (error)
         throw new errors_1.AppError(error.message, 500);
     return data;
+}
+async function listProjectMembers(projectId, userId) {
+    await (0, accessService_1.requireProjectAccess)(userId, projectId, "viewer");
+    const { data, error } = await supabaseClient_1.supabase
+        .from("project_members")
+        .select("id, project_id, user_id, role, app_user(id, name, email, job_role_id)")
+        .eq("project_id", projectId);
+    if (error) {
+        throw new errors_1.AppError(error.message, 500);
+    }
+    return data ?? [];
 }

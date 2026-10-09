@@ -37,6 +37,20 @@ const express_1 = require("express");
 const auth_1 = require("../utils/auth");
 const workflowMetricsService_1 = require("../services/workflowMetricsService");
 const router = (0, express_1.Router)();
+router.post("/projects/home-overviews", async (req, res, next) => {
+    try {
+        const userId = (0, auth_1.getUserId)(req);
+        const projectIds = req.body?.projectIds;
+        if (!Array.isArray(projectIds)) {
+            return res.status(400).json({ message: "projectIds must be an array" });
+        }
+        const overviews = await (0, workflowMetricsService_1.getHomeProjectOverviews)(projectIds, userId);
+        res.json({ overviews });
+    }
+    catch (err) {
+        next(err);
+    }
+});
 router.get("/projects/:projectId/metrics", async (req, res, next) => {
     try {
         const userId = (0, auth_1.getUserId)(req);
@@ -47,11 +61,41 @@ router.get("/projects/:projectId/metrics", async (req, res, next) => {
         next(err);
     }
 });
-router.post("/projects/:projectId/risk-scores/recompute", async (req, res, next) => {
+router.get("/projects/:projectId/overview", async (req, res, next) => {
     try {
         const userId = (0, auth_1.getUserId)(req);
-        const scores = await (0, workflowMetricsService_1.calcProjectRiskScores)(req.params.projectId, userId);
-        res.json(scores);
+        const overview = await (0, workflowMetricsService_1.getProjectOverview)(req.params.projectId, userId);
+        res.json(overview);
+    }
+    catch (err) {
+        next(err);
+    }
+});
+router.get("/projects/:projectId/overview-core", async (req, res, next) => {
+    try {
+        const userId = (0, auth_1.getUserId)(req);
+        const core = await (0, workflowMetricsService_1.getProjectOverviewCore)(req.params.projectId, userId);
+        res.json(core);
+    }
+    catch (err) {
+        next(err);
+    }
+});
+router.get("/projects/:projectId/task-counts", async (req, res, next) => {
+    try {
+        const userId = (0, auth_1.getUserId)(req);
+        const counts = await (0, workflowMetricsService_1.getProjectTaskCounts)(req.params.projectId, userId);
+        res.json(counts);
+    }
+    catch (err) {
+        next(err);
+    }
+});
+router.get("/projects/:projectId/sections/progress", async (req, res, next) => {
+    try {
+        const userId = (0, auth_1.getUserId)(req);
+        const progress = await (0, workflowMetricsService_1.getProjectSectionProgress)(req.params.projectId, userId);
+        res.json(progress);
     }
     catch (err) {
         next(err);

@@ -6,6 +6,7 @@ exports.getProjectById = getProjectById;
 exports.updateProject = updateProject;
 exports.deleteProject = deleteProject;
 const crypto_1 = require("crypto");
+const node_perf_hooks_1 = require("node:perf_hooks");
 const supabaseClient_1 = require("../lib/supabaseClient");
 const errors_1 = require("../lib/errors");
 const accessService_1 = require("./accessService");
@@ -38,16 +39,30 @@ async function createProject(input) {
 }
 //Workspace check → list non-deleted projects in workspace
 async function listProjects(workspaceId, userId) {
-    await (0, accessService_1.requireWorkspaceAccess)(userId, workspaceId);
-    const { data, error } = await supabaseClient_1.supabase
-        .from("project")
-        .select("*")
-        .eq("workspace_id", workspaceId)
-        .eq("is_deleted", false)
-        .order("created_at", { ascending: false });
-    if (error)
-        throw new errors_1.AppError(error.message, 500);
-    return data ?? [];
+    const totalStartedAt = node_perf_hooks_1.performance.now();
+    try {
+        const accessStartedAt = node_perf_hooks_1.performance.now();
+        try {
+            await (0, accessService_1.requireWorkspaceAccess)(userId, workspaceId);
+        }
+        finally {
+            console.log(`[PERF] projects.requireWorkspaceAccess: ${(node_perf_hooks_1.performance.now() - accessStartedAt).toFixed(2)} ms`);
+        }
+        const queryStartedAt = node_perf_hooks_1.performance.now();
+        const { data, error } = await supabaseClient_1.supabase
+            .from("project")
+            .select("*")
+            .eq("workspace_id", workspaceId)
+            .eq("is_deleted", false)
+            .order("created_at", { ascending: false });
+        console.log(`[PERF] projects.databaseQuery: ${(node_perf_hooks_1.performance.now() - queryStartedAt).toFixed(2)} ms`);
+        if (error)
+            throw new errors_1.AppError(error.message, 500);
+        return data ?? [];
+    }
+    finally {
+        console.log(`[PERF] projects.total: ${(node_perf_hooks_1.performance.now() - totalStartedAt).toFixed(2)} ms`);
+    }
 }
 //Project viewer check → fetch 
 async function getProjectById(projectId, userId) {

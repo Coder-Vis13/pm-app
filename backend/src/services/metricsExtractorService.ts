@@ -14,19 +14,21 @@ import {
   ProjectMetrics,
   StatusTimeline,
   StatusType,
+  Task,
   TaskHistory,
   WaitingMetrics,
   AssigneeEvent,
 } from "../types/database";
 import {
+  buildStatusTimeline,
   extractAssigneeHandoffs,
   extractStatusChange,
-  getProjectHistory,
-  getProjectStatusDuration,
-  getProjectAssigneeEvents,
-  getUserProgressMetrics,
   sumIdleHours,
 } from "./historyService";
+import {
+  loadProjectAnalyticsSnapshot,
+  ProjectAnalyticsSnapshot,
+} from "./projectAnalyticsDataService";
 
 const IDLE_STATUSES: StatusType[] = ["waiting", "blocked"];
 
@@ -185,16 +187,34 @@ export function extractHandoffMetrics(
 
 
 /** Derive context-switching features for one user in a project. */
-export async function extractFocusMetrics(
+export function extractFocusMetrics(
   userId: string,
-  projectId: string
-): Promise<FocusMetrics> {
-  const progress = await getUserProgressMetrics(userId, projectId);
+  snapshot: ProjectAnalyticsSnapshot
+): FocusMetrics {
+  const switches = snapshot.history.filter((row) => {
+    const snap = row.task_snapshot;
+    return (
+      row.user_id === userId &&
+      snap?.status === "in_progress" &&
+      row.event_type === "updated"
+    );
+  });
+
+  const uniqueTaskSwitches = new Set(
+    switches.map((switchRow) => switchRow.task_id).filter(Boolean)
+  );
+
+  const concurrentInProgress = snapshot.tasks.filter((task) => {
+    if (task.status !== "in_progress") return false;
+
+    const assigneeIds = snapshot.taskAssigneeIdsByTaskId.get(task.id) ?? [];
+    return assigneeIds.includes(userId);
+  }).length;
 
   return {
-    userId: progress.userId,
-    concurrentInProgress: progress.concurrentInProgress,
-    tasksStarted: progress.tasksStarted,
+    userId,
+    concurrentInProgress,
+    tasksStarted: uniqueTaskSwitches.size,
   };
 }
 
@@ -203,16 +223,21 @@ export async function extractFocusMetrics(
  Direct input to anomalyDetectionService.
  */
 export async function extractProjectMetrics(
-  projectId: string
+  projectId: string,
+  userId: string
 ): Promise<ProjectMetrics> {
-  const [timelines, history, events] = await Promise.all([
-    getProjectStatusDuration(projectId),
-    getProjectHistory(projectId),
-    getProjectAssigneeEvents(projectId),
-  ]);
+  const snapshot = await loadProjectAnalyticsSnapshot(projectId, userId);
+  const timelines: StatusTimeline[] = [];
 
-  const handoffs = extractAssigneeHandoffs(events);
-  const statusChanges = extractStatusChange(history);
+  for (const task of snapshot.tasks) {
+    const taskHistory = snapshot.historyByTaskId.get(task.id) ?? [];
+    timelines.push(
+      ...buildStatusTimeline(task.id, taskHistory, task as Task)
+    );
+  }
+
+  const handoffs = extractAssigneeHandoffs(snapshot.assigneeEvents);
+  const statusChanges = extractStatusChange(snapshot.history);
   const timelineByTask = groupTimelineByTask(timelines);
 
   const taskIds = new Set<string>(timelineByTask.keys());
@@ -230,9 +255,12 @@ export async function extractProjectMetrics(
     extractHandoffMetrics(taskId, handoffs, statusChanges)
   );
 
-  const userIds = collectProjectUserIds(history, events);
-  const focus = await Promise.all(
-    userIds.map((userId) => extractFocusMetrics(userId, projectId))
+  const userIds = collectProjectUserIds(
+    snapshot.history,
+    snapshot.assigneeEvents
+  );
+  const focus = userIds.map((projectUserId) =>
+    extractFocusMetrics(projectUserId, snapshot)
   );
 
   return {

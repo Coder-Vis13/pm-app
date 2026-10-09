@@ -7,6 +7,8 @@ import {
 } from "./accessService";
 import { checkSectionInProject } from "./sectionService";
 import { taskHistoryEntry } from "./auditService";
+import { listAssigneesForTask } from "./assigneeService";
+import { listTaskDependenciesForTask } from "./dependencyService";
 
 interface CreateTaskInput {
   title: string;
@@ -378,16 +380,13 @@ export async function getSectionTaskSummary(
 export async function getTaskById(taskId: string, userId: string) {
   return validateTaskAccess(userId, taskId);
 }
-export async function getSubtasks(
-  taskId: string,
-  userId: string
+async function listSubtasksForParent(
+  parentTask: Task
 ): Promise<SectionTask[]> {
-  const parentTask = await validateTaskAccess(userId, taskId);
-
   const { data: tasks, error } = await supabase
     .from("task")
     .select("*")
-    .eq("parent_task_id", taskId)
+    .eq("parent_task_id", parentTask.id)
     .eq("project_id", parentTask.project_id)
     .eq("is_deleted", false)
     .order("position", { ascending: true });
@@ -410,8 +409,6 @@ export async function getSubtasks(
   if (assigneeError) {
     throw new AppError(assigneeError.message, 500);
   }
-
-  //const deps = await getProjectDeps(parentTask.project_id!);
 
   const deps = await getDependenciesForTasks(taskIds);
 
@@ -454,6 +451,31 @@ export async function getSubtasks(
       subtaskCount: 0,
     })
   );
+}
+
+export async function getSubtasks(
+  taskId: string,
+  userId: string
+): Promise<SectionTask[]> {
+  const parentTask = await validateTaskAccess(userId, taskId);
+  return listSubtasksForParent(parentTask);
+}
+
+export async function getTaskDetailBundle(taskId: string, userId: string) {
+  const task = await validateTaskAccess(userId, taskId);
+
+  const [subtasks, assignees, dependencyDetails] = await Promise.all([
+    listSubtasksForParent(task),
+    listAssigneesForTask(taskId),
+    listTaskDependenciesForTask(taskId, task),
+  ]);
+
+  return {
+    task,
+    subtasks,
+    assignees,
+    dependencyDetails,
+  };
 }
 
 

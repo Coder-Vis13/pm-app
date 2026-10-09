@@ -1,4 +1,4 @@
-import { get } from "../lib/api-client";
+import { get, post } from "../lib/api-client";
 import type {
   AssigneeHandoff,
   FocusMetrics,
@@ -37,6 +37,21 @@ const getProjectOverview = (
 ): Promise<ProjectOverview> =>
   get(`/api/metrics/projects/${projectId}/overview`);
 
+export interface ProjectOverviewCoreResponse {
+  overview: ProjectOverview;
+  sectionProgress: ProjectSectionProgress;
+}
+
+const getProjectOverviewCore = (
+  projectId: string
+): Promise<ProjectOverviewCoreResponse> =>
+  get(`/api/metrics/projects/${projectId}/overview-core`);
+
+const getHomeProjectOverviews = (
+  projectIds: string[]
+): Promise<{ overviews: Record<string, ProjectOverview> }> =>
+  post("/api/metrics/projects/home-overviews", { projectIds });
+
 const getProjectTaskCounts = (
   projectId: string
 ): Promise<ProjectTaskCounts> =>
@@ -51,6 +66,8 @@ export {
   getProjectMetrics,
   getUserFocusSignals,
   getProjectOverview,
+  getProjectOverviewCore,
+  getHomeProjectOverviews,
   getProjectTaskCounts,
   getProjectSectionProgress,
 };

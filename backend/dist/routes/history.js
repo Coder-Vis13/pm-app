@@ -17,6 +17,7 @@ router.get("/tasks/:taskId", async (req, res, next) => {
         next(err);
     }
 });
+// DEL LATER 
 router.get("/tasks/:taskId/segments", async (req, res, next) => {
     try {
         const userId = (0, auth_1.getUserId)(req);
@@ -28,6 +29,7 @@ router.get("/tasks/:taskId/segments", async (req, res, next) => {
         next(err);
     }
 });
+// DEL LATER 
 router.get("/projects/:projectId", async (req, res, next) => {
     try {
         const userId = (0, auth_1.getUserId)(req);
@@ -39,6 +41,7 @@ router.get("/projects/:projectId", async (req, res, next) => {
         next(err);
     }
 });
+// DEL LATER 
 router.get("/audit", async (_req, res, next) => {
     try {
         const result = await (0, auditService_1.verifyAuditChain)();
@@ -48,10 +51,22 @@ router.get("/audit", async (_req, res, next) => {
         next(err);
     }
 });
+// DEL LATER 
 router.get("/audit/entries", async (_req, res, next) => {
     try {
         const entries = await (0, auditService_1.listAuditLog)();
         res.json(entries);
+    }
+    catch (err) {
+        next(err);
+    }
+});
+router.get("/tasks/:taskId/assignee-events", async (req, res, next) => {
+    try {
+        const userId = (0, auth_1.getUserId)(req);
+        await (0, accessService_1.validateTaskAccess)(userId, req.params.taskId);
+        const events = await (0, historyService_1.getTaskAssigneeEvents)(req.params.taskId);
+        res.json(events);
     }
     catch (err) {
         next(err);

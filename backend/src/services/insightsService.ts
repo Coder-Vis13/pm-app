@@ -169,13 +169,15 @@ function toInsertRows(
  */
 export async function computeProjectInsights(
   projectId: string,
+  userId: string,
   detectionConfig?: AnomalyDetectionConfig
 ): Promise<ProjectInsight[]> {
   const computedAt = new Date().toISOString();
 
-  const metrics = await extractProjectMetrics(projectId);
-
-  const narrativeContext = await loadNarrativeContext(projectId);
+  const [metrics, narrativeContext] = await Promise.all([
+    extractProjectMetrics(projectId, userId),
+    loadNarrativeContext(projectId),
+  ]);
 
   const anomalies = detectProjectAnomalies(metrics, detectionConfig);
   const narratives = generateProjectNarratives(anomalies, narrativeContext);

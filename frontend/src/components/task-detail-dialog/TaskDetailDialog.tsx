@@ -1,13 +1,15 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   getSubtasks,
-  getTask,
   getTaskAssignees,
+  getTaskDetailBundle,
   updateTask,
   updateTaskStatus,
   removeTaskAssignee,
@@ -43,6 +45,8 @@ import type {
 } from "@/types/database";
 
 import { TaskDetailDialogView } from "./task-detail-dialog-view";
+import { invalidateAfterTaskChange } from "@/lib/invalidate-after-task-change";
+import { queryKeys } from "@/lib/query-keys";
 import {
   buildActivity,
   getDependencyConflictMessage,
@@ -63,6 +67,7 @@ export function TaskDetailDialog({
   onUpdated,
   onAddSubtask,
 }: TaskDetailDialogProps) {
+  const queryClient = useQueryClient();
   const [task, setTask] = useState<Task | null>(null);
   const [assignees, setAssignees] = useState<TaskAssignee[]>([]);
   const [subtasks, setSubtasks] = useState<SectionTask[]>([]);
@@ -88,9 +93,8 @@ export function TaskDetailDialog({
   const [startDate, setStartDate] = useState("");
   const [dueDate, setDueDate] = useState("");
 
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -100,7 +104,28 @@ export function TaskDetailDialog({
   const [activityOpen, setActivityOpen] = useState(false);
 
   const [members, setMembers] = useState<ProjectMemberWithUser[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersLoadedForTaskId, setMembersLoadedForTaskId] =
+    useState<string | null>(null);
+  const [availableTasksLoading, setAvailableTasksLoading] =
+    useState(false);
+  const [availableTasksLoadedForTaskId, setAvailableTasksLoadedForTaskId] =
+    useState<string | null>(null);
+  const [impactLoading, setImpactLoading] = useState(false);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityLoadedForTaskId, setActivityLoadedForTaskId] =
+    useState<string | null>(null);
   const [assigneeLoading, setAssigneeLoading] = useState(false);
+  const currentTaskIdRef = useRef<string | null>(currentTaskId);
+
+  function notifyTaskUpdated(updatedTask?: Task | null) {
+    const source = updatedTask ?? task;
+    invalidateAfterTaskChange(queryClient, {
+      projectId: source?.project_id ?? undefined,
+      taskId: source?.id,
+    });
+    onUpdated?.();
+  }
 
   useEffect(() => {
     if (open) {
@@ -111,88 +136,201 @@ export function TaskDetailDialog({
     }
   }, [open, taskId]);
 
+  const taskQueriesEnabled = open && !!currentTaskId;
+
+  const taskDetailQuery = useQuery({
+    queryKey: queryKeys.taskDetailBundle(currentTaskId ?? ""),
+    queryFn: () => getTaskDetailBundle(currentTaskId!),
+    enabled: taskQueriesEnabled,
+  });
+
+  const loading = taskQueriesEnabled && taskDetailQuery.isPending;
+
   useEffect(() => {
-    if (!open || !currentTaskId) {
+    currentTaskIdRef.current = currentTaskId;
+  }, [currentTaskId]);
+
+  useEffect(() => {
+    if (!taskQueriesEnabled) {
       return;
     }
 
-    let cancelled = false;
+    const queryError = taskDetailQuery.error;
 
-    async function loadTask() {
-      try {
-        setLoading(true);
-        setError(null);
-        setSaveError(null);
-        setSaved(false);
-
-        if (!currentTaskId) return;
-        
-        const [
-          taskData,
-          subtaskData,
-          dependencyData,
-          impactData,
-          assigneeData,
-          historyData,
-          assigneeEventData,
-        ] = await Promise.all([
-          getTask(currentTaskId),
-          getSubtasks(currentTaskId),
-          getTaskDependencyDetails(currentTaskId),
-          getTaskImpact(currentTaskId),
-          getTaskAssignees(currentTaskId),
-          getTaskHistory(currentTaskId),
-          getTaskAssigneeEvents(currentTaskId),
-        ]);
-
-        if (cancelled) return;
-
-        const [memberData, projectTasks] = taskData.project_id
-          ? await Promise.all([
-              getProjectMembers(taskData.project_id),
-              getTasks(taskData.project_id),
-            ])
-          : [[], []];
-
-        if (cancelled) return;
-
-        setTask(taskData);
-        setMembers(memberData);
-        setAvailableTasks(projectTasks);
-        setDependencyTaskId("");
-        setSubtasks(subtaskData);
-        setDependencies(dependencyData);
-        setImpact(impactData);
-        setAssignees(assigneeData);
-        setHistory(historyData);
-        setAssigneeEvents(assigneeEventData);
-
-        setTitle(taskData.title);
-        setDescription(taskData.description ?? "");
-        setPriority(taskData.priority);
-        setStartDate(toInputDate(taskData.start_date));
-        setDueDate(toInputDate(taskData.due_date));
-      } catch (err) {
-        if (!cancelled) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Failed to load task."
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
+    if (queryError) {
+      setLoadError(
+        queryError instanceof Error
+          ? queryError.message
+          : "Failed to load task."
+      );
+      return;
     }
 
-    loadTask();
+    if (loading) {
+      setLoadError(null);
+      return;
+    }
+
+    const bundle = taskDetailQuery.data;
+    if (!bundle) {
+      return;
+    }
+
+    const taskData = bundle.task;
+
+    setLoadError(null);
+    setSaveError(null);
+    setSaved(false);
+
+    setTask(taskData);
+    setMembers([]);
+    setMembersLoadedForTaskId(null);
+    setAvailableTasks([]);
+    setAvailableTasksLoadedForTaskId(null);
+    setDependencyTaskId("");
+    setSubtasks(bundle.subtasks);
+    setDependencies(bundle.dependencyDetails);
+    setImpact(null);
+    setAssignees(bundle.assignees);
+    setHistory([]);
+    setAssigneeEvents([]);
+    setActivityLoadedForTaskId(null);
+
+    setTitle(taskData.title);
+    setDescription(taskData.description ?? "");
+    setPriority(taskData.priority);
+    setStartDate(toInputDate(taskData.start_date));
+    setDueDate(toInputDate(taskData.due_date));
+
+    let cancelled = false;
+    setImpactLoading(true);
+    void getTaskImpact(taskData.id)
+      .then((impactData) => {
+        if (!cancelled) {
+          setImpact(impactData);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error("Failed to load task impact:", err);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setImpactLoading(false);
+        }
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [open, currentTaskId]);
+  }, [
+    taskQueriesEnabled,
+    loading,
+    currentTaskId,
+    taskDetailQuery.data,
+    taskDetailQuery.error,
+  ]);
+
+  useEffect(() => {
+    if (
+      !open ||
+      !currentTaskId ||
+      !activityOpen ||
+      activityLoadedForTaskId === currentTaskId
+    ) {
+      return;
+    }
+
+    const taskIdToLoad = currentTaskId;
+    let cancelled = false;
+    setActivityLoading(true);
+
+    async function loadActivity() {
+      try {
+        await loadMembers();
+
+        const [historyData, assigneeEventData] = await Promise.all([
+          getTaskHistory(taskIdToLoad),
+          getTaskAssigneeEvents(taskIdToLoad),
+        ]);
+
+        if (!cancelled) {
+          setHistory(historyData);
+          setAssigneeEvents(assigneeEventData);
+          setActivityLoadedForTaskId(taskIdToLoad);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to load task activity:", err);
+        }
+      } finally {
+        if (!cancelled) {
+          setActivityLoading(false);
+        }
+      }
+    }
+
+    void loadActivity();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, currentTaskId, activityOpen, activityLoadedForTaskId]);
+
+  // Load project members when an assignee selector needs them.
+  async function loadMembers() {
+    if (
+      !task?.project_id ||
+      membersLoading ||
+      membersLoadedForTaskId === task.id
+    ) {
+      return;
+    }
+
+    const taskIdToLoad = task.id;
+
+    try {
+      setMembersLoading(true);
+      const memberData = await getProjectMembers(task.project_id);
+
+      if (currentTaskIdRef.current === taskIdToLoad) {
+        setMembers(memberData);
+        setMembersLoadedForTaskId(taskIdToLoad);
+      }
+    } catch (err) {
+      console.error("Failed to load project members:", err);
+    } finally {
+      setMembersLoading(false);
+    }
+  }
+
+  // Load project tasks when the dependency selector needs them.
+  async function loadAvailableTasks() {
+    if (
+      !task?.project_id ||
+      availableTasksLoading ||
+      availableTasksLoadedForTaskId === task.id
+    ) {
+      return;
+    }
+
+    const taskIdToLoad = task.id;
+
+    try {
+      setAvailableTasksLoading(true);
+      const projectTasks = await getTasks(task.project_id);
+
+      if (currentTaskIdRef.current === taskIdToLoad) {
+        setAvailableTasks(projectTasks);
+        setAvailableTasksLoadedForTaskId(taskIdToLoad);
+      }
+    } catch (err) {
+      console.error("Failed to load project tasks:", err);
+    } finally {
+      setAvailableTasksLoading(false);
+    }
+  }
 
   async function deleteCurrentTask() {
     if (!task) return;
@@ -226,7 +364,7 @@ export function TaskDetailDialog({
         setParentTaskId(null);
         setSubtasks(updatedSubtasks);
       } else {
-        onUpdated?.();
+        notifyTaskUpdated(task);
         onClose();
       }
     } catch (err) {
@@ -277,7 +415,7 @@ export function TaskDetailDialog({
       setDueDate(toInputDate(updated.due_date));
 
       setSaved(true);
-      onUpdated?.();
+      notifyTaskUpdated(updated);
 
       await refreshActivity(updated.id);
     } catch (err) {
@@ -300,6 +438,7 @@ export function TaskDetailDialog({
 
       setHistory(historyData);
       setAssigneeEvents(assigneeEventData);
+      setActivityLoadedForTaskId(taskId);
     } catch (err) {
       console.error("Failed to refresh task activity:", err);
     }
@@ -329,7 +468,7 @@ export function TaskDetailDialog({
 
       setDependencies(updatedDependencies);
       setDependencyTaskId("");
-      onUpdated?.();
+      notifyTaskUpdated();
     } catch (err) {
       setSaveError(
         err instanceof Error
@@ -359,7 +498,7 @@ export function TaskDetailDialog({
       );
 
       setDependencies(updatedDependencies);
-      onUpdated?.();
+      notifyTaskUpdated();
     } catch (err) {
       setSaveError(
         err instanceof Error
@@ -385,7 +524,7 @@ export function TaskDetailDialog({
       );
 
       setTask(updated);
-      onUpdated?.();
+      notifyTaskUpdated(updated);
 
       await refreshActivity(updated.id);
     } catch (err) {
@@ -423,7 +562,7 @@ export function TaskDetailDialog({
           : prev
       );
 
-      onUpdated?.();
+      notifyTaskUpdated();
       await refreshActivity(task.id);
     } catch (err) {
       setSaveError(
@@ -462,7 +601,7 @@ export function TaskDetailDialog({
           : prev
       );
 
-      onUpdated?.();
+      notifyTaskUpdated();
       await refreshActivity(task.id);
     } catch (err) {
       setSaveError(
@@ -494,7 +633,7 @@ export function TaskDetailDialog({
       const updatedSubtasks = await getSubtasks(task!.id);
 
       setSubtasks(updatedSubtasks);
-      onUpdated?.();
+      notifyTaskUpdated();
     } catch (err) {
       setSaveError(
         err instanceof Error
@@ -547,12 +686,14 @@ export function TaskDetailDialog({
       saving={saving}
       onClose={onClose}
       loading={loading}
-      error={error}
+      error={loadError}
       task={task}
       title={title}
       setTitle={setTitle}
       assignees={assignees}
       members={members}
+      membersLoading={membersLoading}
+      loadMembers={loadMembers}
       assigneeLoading={assigneeLoading}
       removeAssignee={removeAssignee}
       addAssignee={addAssignee}
@@ -584,12 +725,16 @@ export function TaskDetailDialog({
       setDependencyTaskId={setDependencyTaskId}
       dependencySaving={dependencySaving}
       dependencyOptions={dependencyOptions}
+      availableTasksLoading={availableTasksLoading}
+      loadAvailableTasks={loadAvailableTasks}
       addTaskDependency={addTaskDependency}
       removeTaskDependency={removeTaskDependency}
       impact={impact}
+      impactLoading={impactLoading}
       impactOpen={impactOpen}
       setImpactOpen={setImpactOpen}
       activity={activity}
+      activityLoading={activityLoading}
       activityOpen={activityOpen}
       setActivityOpen={setActivityOpen}
     />

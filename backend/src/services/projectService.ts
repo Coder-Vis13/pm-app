@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { performance } from "node:perf_hooks";
 import { supabase } from "../lib/supabaseClient";
 import { AppError } from "../lib/errors";
 import { requireProjectAccess, requireWorkspaceAccess } from "./accessService";
@@ -44,17 +45,36 @@ export async function createProject(input: CreateProjectInput) {
 
 //Workspace check → list non-deleted projects in workspace
 export async function listProjects(workspaceId: string, userId: string) {
-  await requireWorkspaceAccess(userId, workspaceId);
+  const totalStartedAt = performance.now();
 
-  const { data, error } = await supabase
-    .from("project")
-    .select("*")
-    .eq("workspace_id", workspaceId)
-    .eq("is_deleted", false)
-    .order("created_at", { ascending: false });
+  try {
+    const accessStartedAt = performance.now();
+    try {
+      await requireWorkspaceAccess(userId, workspaceId);
+    } finally {
+      console.log(
+        `[PERF] projects.requireWorkspaceAccess: ${(performance.now() - accessStartedAt).toFixed(2)} ms`
+      );
+    }
 
-  if (error) throw new AppError(error.message, 500);
-  return data ?? [];
+    const queryStartedAt = performance.now();
+    const { data, error } = await supabase
+      .from("project")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .eq("is_deleted", false)
+      .order("created_at", { ascending: false });
+    console.log(
+      `[PERF] projects.databaseQuery: ${(performance.now() - queryStartedAt).toFixed(2)} ms`
+    );
+
+    if (error) throw new AppError(error.message, 500);
+    return data ?? [];
+  } finally {
+    console.log(
+      `[PERF] projects.total: ${(performance.now() - totalStartedAt).toFixed(2)} ms`
+    );
+  }
 }
 
 //Project viewer check → fetch 

@@ -69,12 +69,16 @@ interface TaskDetailDialogSectionsProps {
   setDependencyTaskId: Dispatch<SetStateAction<string>>;
   dependencySaving: boolean;
   dependencyOptions: Task[];
+  availableTasksLoading: boolean;
+  loadAvailableTasks: () => Promise<void>;
   addTaskDependency: () => void;
   removeTaskDependency: (dependencyId: string) => void;
   impact: TaskImpact | null;
+  impactLoading: boolean;
   impactOpen: boolean;
   setImpactOpen: Dispatch<SetStateAction<boolean>>;
   activity: ActivityEntry[];
+  activityLoading: boolean;
   activityOpen: boolean;
   setActivityOpen: Dispatch<SetStateAction<boolean>>;
 }
@@ -102,12 +106,16 @@ export function TaskDetailDialogSections({
   setDependencyTaskId,
   dependencySaving,
   dependencyOptions,
+  availableTasksLoading,
+  loadAvailableTasks,
   addTaskDependency,
   removeTaskDependency,
   impact,
+  impactLoading,
   impactOpen,
   setImpactOpen,
   activity,
+  activityLoading,
   activityOpen,
   setActivityOpen,
 }: TaskDetailDialogSectionsProps) {
@@ -271,25 +279,38 @@ export function TaskDetailDialogSections({
             value: availableTask.id,
             label: availableTask.title,
           }))}
+          onOpenChange={(isOpen) => {
+            if (isOpen) {
+              void loadAvailableTasks();
+            }
+          }}
           onValueChange={(value) =>
             setDependencyTaskId(value ?? "")
           }
-          disabled={
-            dependencySaving || dependencyOptions.length === 0
-          }
+          disabled={dependencySaving}
         >
           <SelectTrigger className="h-9 min-w-0 flex-1 text-xs">
             <SelectValue placeholder="Select a task" />
           </SelectTrigger>
           <SelectContent>
-            {dependencyOptions.map((availableTask) => (
-              <SelectItem
-                key={availableTask.id}
-                value={availableTask.id}
-              >
-                {availableTask.title}
+            {availableTasksLoading ? (
+              <SelectItem value="__loading" disabled>
+                Loading tasks...
               </SelectItem>
-            ))}
+            ) : dependencyOptions.length === 0 ? (
+              <SelectItem value="__empty" disabled>
+                No available tasks
+              </SelectItem>
+            ) : (
+              dependencyOptions.map((availableTask) => (
+                <SelectItem
+                  key={availableTask.id}
+                  value={availableTask.id}
+                >
+                  {availableTask.title}
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
 
@@ -299,7 +320,9 @@ export function TaskDetailDialogSections({
           size="sm"
           onClick={addTaskDependency}
           disabled={
-            dependencySaving || !dependencyTaskId
+            dependencySaving ||
+            availableTasksLoading ||
+            !dependencyTaskId
           }
           className="h-9 text-xs"
         >
@@ -395,7 +418,11 @@ export function TaskDetailDialogSections({
         setImpactOpen((value) => !value)
       }
     >
-      {impact ? (
+      {impactLoading ? (
+        <EmptySectionText>
+          Loading impact data...
+        </EmptySectionText>
+      ) : impact ? (
         <div className="grid overflow-hidden rounded-lg border border-neutral-200 sm:grid-cols-3">
           <ImpactItem
             label="Direct dependents"
@@ -421,13 +448,16 @@ export function TaskDetailDialogSections({
     <TaskSection
       title="Activity"
       icon={<History className="size-4" />}
-      count={activity.length}
       open={activityOpen}
       onToggle={() =>
         setActivityOpen((value) => !value)
       }
     >
-      {activity.length === 0 ? (
+      {activityLoading ? (
+        <EmptySectionText>
+          Loading activity...
+        </EmptySectionText>
+      ) : activity.length === 0 ? (
         <EmptySectionText>
           No activity recorded.
         </EmptySectionText>
@@ -446,4 +476,3 @@ export function TaskDetailDialogSections({
     </>
   );
 }
-

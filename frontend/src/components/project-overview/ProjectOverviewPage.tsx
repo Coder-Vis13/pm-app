@@ -1,11 +1,19 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Separator } from "@/components/ui/separator";
 import {
   buildProjectOverviewViewModel,
   type ProjectOverviewViewModel,
 } from "@/data/project-overview/formatters";
-import { fetchProjectOverviewRaw } from "@/data/project-overview/mockData";
+import {
+  fetchProjectOverviewCore,
+  fetchProjectOverviewSecondary,
+  type ProjectOverviewCoreData,
+  type ProjectOverviewRawData,
+  type ProjectOverviewSecondaryData,
+} from "@/data/project-overview/mockData";
 import { ApiError } from "@/lib/api-client";
+import { queryKeys } from "@/lib/query-keys";
 import { ProjectHealth } from "./ProjectHealth";
 import { ProjectIntelligence } from "./ProjectIntelligence";
 import { ProjectOverviewHeader } from "./ProjectOverviewHeader";
@@ -27,46 +35,77 @@ function getLoadErrorMessage(error: unknown): string {
   return "Failed to load project overview";
 }
 
+const EMPTY_SECONDARY_DATA: ProjectOverviewSecondaryData = {
+  insights: [],
+  workflowMetrics: {
+    totalIdleHours: 0,
+    handoffCount: 0,
+    overloadedMemberCount: 0,
+  },
+};
+
+const EMPTY_PROJECT_META: ProjectOverviewRawData["projectMeta"] = {
+  workspaceName: "",
+  name: "",
+  description: "",
+  memberCount: 0,
+  updatedMinutesAgo: 0,
+  taskLabels: {},
+  userLabels: {},
+};
+
+// Combine core and secondary data for the existing view model.
+function buildRawData(
+  core: ProjectOverviewCoreData,
+  secondary: ProjectOverviewSecondaryData
+): ProjectOverviewRawData {
+  return {
+    ...core,
+    ...secondary,
+    projectMeta: EMPTY_PROJECT_META,
+  };
+}
+
 export function ProjectOverviewPage({
   projectId,
   projectName,
   projectDescription,
   onSectionSelect,
 }: ProjectOverviewPageProps) {
-  const [data, setData] = useState<ProjectOverviewViewModel | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    data: coreData,
+    isPending: corePending,
+    error: coreError,
+  } = useQuery({
+    queryKey: queryKeys.projectOverviewCore(projectId),
+    queryFn: () => fetchProjectOverviewCore(projectId),
+  });
 
-  useEffect(() => {
-    let cancelled = false;
+  const {
+    data: secondaryData,
+    isPending: secondaryPending,
+    error: secondaryQueryError,
+  } = useQuery({
+    queryKey: queryKeys.projectOverviewSecondary(projectId),
+    queryFn: () => fetchProjectOverviewSecondary(projectId),
+    enabled: !!coreData,
+  });
 
-    async function load() {
-      setLoading(true);
-      setError(null);
+  const loading = corePending;
+  const error = coreError ? getLoadErrorMessage(coreError) : null;
+  const secondaryLoading = secondaryPending;
+  const secondaryError = secondaryQueryError
+    ? getLoadErrorMessage(secondaryQueryError)
+    : null;
 
-      try {
-        const raw = await fetchProjectOverviewRaw(projectId);
-        if (!cancelled) {
-          setData(buildProjectOverviewViewModel(raw));
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setData(null);
-          setError(getLoadErrorMessage(err));
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
+  const data = useMemo((): ProjectOverviewViewModel | null => {
+    if (!coreData) {
+      return null;
     }
 
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
+    const secondary = secondaryData ?? EMPTY_SECONDARY_DATA;
+    return buildProjectOverviewViewModel(buildRawData(coreData, secondary));
+  }, [coreData, secondaryData]);
 
   if (loading) {
     return (
@@ -124,17 +163,35 @@ export function ProjectOverviewPage({
         <Separator className="bg-neutral-100" />
 
         <section>
-          <ProjectIntelligence
-            cards={data.intelligence}
-            totalCount={data.intelligenceTotal}
-          />
+          {secondaryLoading ? (
+            <p className="text-sm text-neutral-500">
+              Loading project intelligence...
+            </p>
+          ) : secondaryError ? (
+            <p className="text-sm text-red-600">{secondaryError}</p>
+          ) : (
+            <ProjectIntelligence
+              cards={data.intelligence}
+              totalCount={data.intelligenceTotal}
+            />
+          )}
         </section>
 
         <Separator className="bg-neutral-100" />
 
         <section className="space-y-4">
           <SectionLabel>Workflow signals</SectionLabel>
-          <WorkflowSignals signals={data.workflowSignals} />
+          {secondaryLoading ? (
+            <p className="text-sm text-neutral-500">
+              Loading workflow signals...
+            </p>
+          ) : secondaryError ? (
+            <p className="text-sm text-red-600">
+              Workflow signals are unavailable.
+            </p>
+          ) : (
+            <WorkflowSignals signals={data.workflowSignals} />
+          )}
         </section>
       </div>
     </div>

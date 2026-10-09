@@ -1,7 +1,6 @@
 import {
   getProjectMetrics,
-  getProjectOverview,
-  getProjectSectionProgress,
+  getProjectOverviewCore,
 } from "@/api/metrics";
 import { getProjectInsights } from "@/api/insights";
 import type {
@@ -12,16 +11,24 @@ import type {
   StatusType,
 } from "@/types/database";
 
-/** Raw bundle from backend API responses. */
-export interface ProjectOverviewRawData {
+export interface ProjectOverviewCoreData {
   overview: ProjectOverview;
   sectionProgress: ProjectSectionProgress;
+}
+
+export interface ProjectOverviewSecondaryData {
   insights: ProjectInsight[];
   workflowMetrics: {
     totalIdleHours: number;
     handoffCount: number;
     overloadedMemberCount: number;
   };
+}
+
+/** Raw bundle from backend API responses. */
+export interface ProjectOverviewRawData
+  extends ProjectOverviewCoreData,
+    ProjectOverviewSecondaryData {
   projectMeta: {
     workspaceName: string;
     name: string;
@@ -40,25 +47,45 @@ function countFocusInsights(insights: ProjectInsight[]): number {
   }).length;
 }
 
-export async function fetchProjectOverviewRaw(
+// Load the data needed for the main project overview.
+export async function fetchProjectOverviewCore(
   projectId: string
-): Promise<ProjectOverviewRawData> {
-  const [overview, sectionProgress, insights, metrics] = await Promise.all([
-    getProjectOverview(projectId),
-    getProjectSectionProgress(projectId),
+): Promise<ProjectOverviewCoreData> {
+  return getProjectOverviewCore(projectId);
+}
+
+// Load workflow metrics and insights for the project overview.
+export async function fetchProjectOverviewSecondary(
+  projectId: string
+): Promise<ProjectOverviewSecondaryData> {
+  const [insights, metrics] = await Promise.all([
     getProjectInsights(projectId),
     getProjectMetrics(projectId),
   ]);
 
+  const normalizedInsights = insights ?? [];
+
   return {
-    overview,
-    sectionProgress,
-    insights: insights ?? [],
+    insights: normalizedInsights,
     workflowMetrics: {
       totalIdleHours: metrics.totalIdleHours ?? 0,
       handoffCount: metrics.assigneeHandoffs?.length ?? 0,
-      overloadedMemberCount: countFocusInsights(insights ?? []),
+      overloadedMemberCount: countFocusInsights(normalizedInsights),
     },
+  };
+}
+
+export async function fetchProjectOverviewRaw(
+  projectId: string
+): Promise<ProjectOverviewRawData> {
+  const [core, secondary] = await Promise.all([
+    fetchProjectOverviewCore(projectId),
+    fetchProjectOverviewSecondary(projectId),
+  ]);
+
+  return {
+    ...core,
+    ...secondary,
     projectMeta: {
       workspaceName: "",
       name: "",

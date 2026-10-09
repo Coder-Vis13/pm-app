@@ -23,7 +23,10 @@ router.post(
         "viewer"
       );
 
-      const insights = await computeProjectInsights(req.params.projectId);
+      const insights = await computeProjectInsights(
+        req.params.projectId,
+        userId
+      );
 
       res.json(insights);
     } catch (err) {

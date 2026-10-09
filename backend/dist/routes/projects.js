@@ -59,6 +59,16 @@ router.get("/workspace/:workspaceId", async (req, res, next) => {
         next(err);
     }
 });
+router.get("/:projectId/members", async (req, res, next) => {
+    try {
+        const userId = (0, auth_1.getUserId)(req);
+        const members = await (0, membershipService_1.listProjectMembers)(req.params.projectId, userId);
+        res.json(members);
+    }
+    catch (err) {
+        next(err);
+    }
+});
 router.get("/:projectId", async (req, res, next) => {
     try {
         const userId = (0, auth_1.getUserId)(req);

@@ -43,6 +43,8 @@ interface TaskDetailDialogViewProps {
   setTitle: Dispatch<SetStateAction<string>>;
   assignees: TaskAssignee[];
   members: ProjectMemberWithUser[];
+  membersLoading: boolean;
+  loadMembers: () => Promise<void>;
   assigneeLoading: boolean;
   removeAssignee: (assignee: TaskAssignee) => void;
   addAssignee: (userId: string) => void;
@@ -74,12 +76,16 @@ interface TaskDetailDialogViewProps {
   setDependencyTaskId: Dispatch<SetStateAction<string>>;
   dependencySaving: boolean;
   dependencyOptions: Task[];
+  availableTasksLoading: boolean;
+  loadAvailableTasks: () => Promise<void>;
   addTaskDependency: () => void;
   removeTaskDependency: (dependencyId: string) => void;
   impact: TaskImpact | null;
+  impactLoading: boolean;
   impactOpen: boolean;
   setImpactOpen: Dispatch<SetStateAction<boolean>>;
   activity: ActivityEntry[];
+  activityLoading: boolean;
   activityOpen: boolean;
   setActivityOpen: Dispatch<SetStateAction<boolean>>;
 }
@@ -99,6 +105,8 @@ export function TaskDetailDialogView({
   setTitle,
   assignees,
   members,
+  membersLoading,
+  loadMembers,
   assigneeLoading,
   removeAssignee,
   addAssignee,
@@ -130,12 +138,16 @@ export function TaskDetailDialogView({
   setDependencyTaskId,
   dependencySaving,
   dependencyOptions,
+  availableTasksLoading,
+  loadAvailableTasks,
   addTaskDependency,
   removeTaskDependency,
   impact,
+  impactLoading,
   impactOpen,
   setImpactOpen,
   activity,
+  activityLoading,
   activityOpen,
   setActivityOpen,
 }: TaskDetailDialogViewProps) {
@@ -212,6 +224,8 @@ export function TaskDetailDialogView({
                 setTitle={setTitle}
                 assignees={assignees}
                 members={members}
+                membersLoading={membersLoading}
+                loadMembers={loadMembers}
                 assigneeLoading={assigneeLoading}
                 removeAssignee={removeAssignee}
                 addAssignee={addAssignee}
@@ -251,12 +265,16 @@ export function TaskDetailDialogView({
                 setDependencyTaskId={setDependencyTaskId}
                 dependencySaving={dependencySaving}
                 dependencyOptions={dependencyOptions}
+                availableTasksLoading={availableTasksLoading}
+                loadAvailableTasks={loadAvailableTasks}
                 addTaskDependency={addTaskDependency}
                 removeTaskDependency={removeTaskDependency}
                 impact={impact}
+                impactLoading={impactLoading}
                 impactOpen={impactOpen}
                 setImpactOpen={setImpactOpen}
                 activity={activity}
+                activityLoading={activityLoading}
                 activityOpen={activityOpen}
                 setActivityOpen={setActivityOpen}
               />

@@ -15,6 +15,7 @@ const workspaces_1 = __importDefault(require("./routes/workspaces"));
 const dependencies_1 = __importDefault(require("./routes/dependencies"));
 const history_1 = __importDefault(require("./routes/history"));
 const metrics_1 = __importDefault(require("./routes/metrics"));
+const insights_1 = __importDefault(require("./routes/insights"));
 function createApp() {
     const app = (0, express_1.default)();
     app.use((0, cors_1.default)());
@@ -30,6 +31,7 @@ function createApp() {
     app.use("/api/dependencies", dependencies_1.default);
     app.use("/api/history", history_1.default);
     app.use("/api/metrics", metrics_1.default);
+    app.use("/api/insights", insights_1.default);
     app.use(errorHandler_1.errorHandler);
     return app;
 }

@@ -16,11 +16,18 @@ export async function getProjectDeps(
   if (taskError) throw new AppError(taskError.message, 500);
 
   const taskIds = (tasks ?? []).map((t) => t.id);
+  return getDependenciesForTaskIds(taskIds);
+}
+
+// Load dependencies for a known set of active task IDs.
+export async function getDependenciesForTaskIds(
+  taskIds: string[]
+): Promise<TaskDep[]> {
   if (taskIds.length === 0) return [];
 
   const { data, error } = await supabase
     .from("task_dependencies")
-    .select("*")
+    .select("id, blocking_task_id, blocked_task_id, created_at")
     .in("blocked_task_id", taskIds)
     .in("blocking_task_id", taskIds);
 
@@ -124,12 +131,10 @@ if (!data) {
 }
 
 
-export async function listTaskDependencies(
+export async function listTaskDependenciesForTask(
   taskId: string,
-  userId: string
+  currentTask: { id: string; status: string; start_date: string | null; due_date: string | null; is_deleted: boolean }
 ) {
-  const currentTask = await validateTaskAccess(userId, taskId);
-
   const { data: deps, error: depError } = await supabase
     .from("task_dependencies")
     .select("*")
@@ -216,4 +221,12 @@ export async function listTaskDependencies(
       date_conflict: dateConflict,
     };
   });
+}
+
+export async function listTaskDependencies(
+  taskId: string,
+  userId: string
+) {
+  const currentTask = await validateTaskAccess(userId, taskId);
+  return listTaskDependenciesForTask(taskId, currentTask);
 }

@@ -1,4 +1,5 @@
 import { get, post, patch, del } from "../lib/api-client";
+import type { TaskDependencyDetails } from "./dependency";
 import type {
   PriorityLevel,
   StatusType,
@@ -12,6 +13,13 @@ import type {
   Subtask,
   MyTask,
 } from "../types/database";
+
+export interface TaskDetailBundle {
+  task: Task;
+  subtasks: SectionTask[];
+  assignees: TaskAssignee[];
+  dependencyDetails: TaskDependencyDetails[];
+}
 
 const getTasks = (projectId: string): Promise<Task[]> =>
   get(`/api/tasks/project/${projectId}`);
@@ -76,6 +84,9 @@ const getSectionTaskSummary = (
 
 const getTask = (taskId: string): Promise<Task> =>
   get(`/api/tasks/${taskId}`);
+
+const getTaskDetailBundle = (taskId: string): Promise<TaskDetailBundle> =>
+  get(`/api/tasks/${taskId}/detail`);
 
 const updateTask = (
   taskId: string,
@@ -153,6 +164,7 @@ export {
   getMyTasks,
   createTask,
   getTask,
+  getTaskDetailBundle,
   getSectionTasks,
   getSectionTaskSummary,
   updateTask,

@@ -3,10 +3,8 @@ import { AppError } from "../lib/errors";
 import { requireProjectAccess, validateTaskAccess } from "./accessService";
 
 
-// Viewer check, fetch task assignees and their user info
-export async function listAssignees(taskId: string, userId: string) {
-  await validateTaskAccess(userId, taskId);
-
+// Fetch assignees for a task (caller must verify access).
+export async function listAssigneesForTask(taskId: string) {
   const { data, error } = await supabase
     .from("task_assignees")
     .select("id, user_id, app_user(id, name, email, job_role_id)")
@@ -14,6 +12,12 @@ export async function listAssignees(taskId: string, userId: string) {
 
   if (error) throw new AppError(error.message, 500);
   return data ?? [];
+}
+
+// Viewer check, fetch task assignees and their user info
+export async function listAssignees(taskId: string, userId: string) {
+  await validateTaskAccess(userId, taskId);
+  return listAssigneesForTask(taskId);
 }
 
 //Editor check, insert assignee for a task

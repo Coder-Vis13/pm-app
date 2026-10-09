@@ -266,6 +266,8 @@ interface TaskDetailDialogFieldsProps {
   setTitle: Dispatch<SetStateAction<string>>;
   assignees: TaskAssignee[];
   members: ProjectMemberWithUser[];
+  membersLoading: boolean;
+  loadMembers: () => Promise<void>;
   assigneeLoading: boolean;
   removeAssignee: (assignee: TaskAssignee) => void;
   addAssignee: (userId: string) => void;
@@ -291,6 +293,8 @@ export function TaskDetailDialogFields({
   setTitle,
   assignees,
   members,
+  membersLoading,
+  loadMembers,
   assigneeLoading,
   removeAssignee,
   addAssignee,
@@ -403,15 +407,26 @@ export function TaskDetailDialogFields({
 
               <Select
                 value=""
+                onOpenChange={(isOpen) => {
+                  if (isOpen) {
+                    void loadMembers();
+                  }
+                }}
                 onValueChange={(value) => {
                   if (value) {
                     void addAssignee(value);
                   }
                 }}
-                disabled={assigneeLoading}
+                disabled={assigneeLoading || membersLoading}
               >
                 <SelectTrigger className="h-8 w-auto min-w-32 border-dashed border-neutral-300 px-2.5 text-sm">
-                  <SelectValue placeholder="+ Add assignee" />
+                  <SelectValue
+                    placeholder={
+                      membersLoading
+                        ? "Loading members..."
+                        : "+ Add assignee"
+                    }
+                  />
                 </SelectTrigger>
 
                 <SelectContent>
@@ -560,4 +575,3 @@ export function TaskDetailDialogFields({
     </>
   );
 }
-

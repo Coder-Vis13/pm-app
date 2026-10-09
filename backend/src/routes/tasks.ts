@@ -7,6 +7,7 @@ import {
   getDelayDays,
   getSubtasks,
   getTaskById,
+  getTaskDetailBundle,
   listTasks,
   listSectionTasks,
   getSectionTaskSummary,
@@ -196,6 +197,16 @@ router.get("/:taskId/subtasks", async (req, res, next) => {
   }
 });
 
+
+router.get("/:taskId/detail", async (req, res, next) => {
+  try {
+    const userId = getUserId(req);
+    const bundle = await getTaskDetailBundle(req.params.taskId, userId);
+    res.json(bundle);
+  } catch (err) {
+    next(err);
+  }
+});
 
 router.get("/:taskId", async (req, res, next) => {
   try {

@@ -1,19 +1,28 @@
 //aggregator for project metrics for AIML
 
+import { performance } from "node:perf_hooks";
 import { supabase } from "../lib/supabaseClient";
 import { AppError } from "../lib/errors";
 import { requireProjectAccess } from "./accessService";
 import {
+  buildStatusTimeline,
   extractAssigneeHandoffs,
   extractStatusChange,
-  getProjectHistory,
-  getProjectStatusDuration,
-  getProjectAssigneeEvents,
   getUserProgressMetrics,
   sumIdleHours,
 } from "./historyService";
-import { getProjectDeps } from "./dependencyService";
-import { Section, StatusType, TaskDep } from "../types/database";
+import { getDependenciesForTaskIds } from "./dependencyService";
+import {
+  loadProjectAnalyticsSnapshot,
+} from "./projectAnalyticsDataService";
+import type { ProjectAnalyticsSnapshot } from "./projectAnalyticsDataService";
+import {
+  Section,
+  StatusTimeline,
+  StatusType,
+  Task,
+  TaskDep,
+} from "../types/database";
 // import { calcRiskScore } from "./dependencyAnalysisService";
 
 const ALL_STATUSES: StatusType[] = [
@@ -112,6 +121,22 @@ async function fetchActiveProjectTasks(
 
   if (error) throw new AppError(error.message, 500);
   return (data ?? []) as ActiveTaskRow[];
+}
+
+// Build project status segments from the grouped history snapshot.
+function buildProjectStatusSegments(
+  snapshot: ProjectAnalyticsSnapshot
+): StatusTimeline[] {
+  const segments: StatusTimeline[] = [];
+
+  for (const task of snapshot.tasks) {
+    const taskHistory = snapshot.historyByTaskId.get(task.id) ?? [];
+    segments.push(
+      ...buildStatusTimeline(task.id, taskHistory, task as Task)
+    );
+  }
+
+  return segments;
 }
 
 function countTasksByStatus(
@@ -382,40 +407,165 @@ export async function getProjectTaskCounts(
   return buildTaskCounts(projectId, tasks);
 }
 
-export async function getProjectOverview(
+// Lighter overview for Home cards (no task history / workflow timeline).
+export async function getProjectOverviewSummary(
   projectId: string,
   userId: string
 ): Promise<ProjectOverview> {
   await requireProjectAccess(userId, projectId, "viewer");
 
-  const [tasks, deps, statusSegments, sectionsResult] = await Promise.all([
-    fetchActiveProjectTasks(projectId),
-    getProjectDeps(projectId),
-    getProjectStatusDuration(projectId),
+  const tasks = await fetchActiveProjectTasks(projectId);
+  const taskIds = tasks.map((task) => task.id);
+
+  const [sectionsResult, dependencies] = await Promise.all([
     supabase
       .from("section")
       .select("id")
       .eq("project_id", projectId)
       .eq("is_deleted", false),
+    taskIds.length > 0
+      ? getDependenciesForTaskIds(taskIds)
+      : Promise.resolve([] as TaskDep[]),
   ]);
 
   if (sectionsResult.error) {
     throw new AppError(sectionsResult.error.message, 500);
   }
 
-  const activeSectionCount = sectionsResult.data?.length ?? 0;
-  const totalIdleHours = sumIdleHours(statusSegments);
+  const sectionCount = sectionsResult.data?.length ?? 0;
 
   return {
     projectId,
     tasks: buildTaskCounts(projectId, tasks),
+    health: computeProjectHealth(tasks, dependencies, 0, sectionCount),
+  };
+}
+
+export async function getHomeProjectOverviews(
+  projectIds: string[],
+  userId: string
+): Promise<Record<string, ProjectOverview>> {
+  const overviews: Record<string, ProjectOverview> = {};
+
+  await Promise.all(
+    projectIds.map(async (projectId) => {
+      try {
+        overviews[projectId] = await getProjectOverviewSummary(
+          projectId,
+          userId
+        );
+      } catch {
+        // Skip projects the user cannot load, same as Home's per-project try/catch.
+      }
+    })
+  );
+
+  return overviews;
+}
+
+function buildOverviewFromSnapshot(
+  projectId: string,
+  snapshot: ProjectAnalyticsSnapshot
+): ProjectOverview {
+  const statusSegments = buildProjectStatusSegments(snapshot);
+  const totalIdleHours = sumIdleHours(statusSegments);
+
+  return {
+    projectId,
+    tasks: buildTaskCounts(projectId, snapshot.tasks),
     health: computeProjectHealth(
-      tasks,
-      deps,
+      snapshot.tasks,
+      snapshot.dependencies,
       totalIdleHours,
-      activeSectionCount
+      snapshot.sections.length
     ),
   };
+}
+
+function buildSectionProgressFromSnapshot(
+  snapshot: ProjectAnalyticsSnapshot
+): ProjectSectionProgress {
+  const tasksBySection = new Map<string, ActiveTaskRow[]>();
+  const unsectionedTasks: ActiveTaskRow[] = [];
+
+  for (const task of snapshot.tasks) {
+    const row: ActiveTaskRow = {
+      id: task.id,
+      status: task.status,
+      section_id: task.section_id,
+      due_date: task.due_date,
+    };
+
+    if (!task.section_id) {
+      unsectionedTasks.push(row);
+      continue;
+    }
+
+    const sectionTasks = tasksBySection.get(task.section_id) ?? [];
+    sectionTasks.push(row);
+    tasksBySection.set(task.section_id, sectionTasks);
+  }
+
+  const sectionProgress = snapshot.sections.map((section) =>
+    sectionProgressFromTasks(section, tasksBySection.get(section.id) ?? [])
+  );
+
+  const unsectionedCompleted = unsectionedTasks.filter(
+    (task) => task.status === "done"
+  ).length;
+  const unsectionedCount = unsectionedTasks.length;
+
+  return {
+    projectId: snapshot.projectId,
+    sections: sectionProgress,
+    unsectioned: {
+      taskCount: unsectionedCount,
+      completedTaskCount: unsectionedCompleted,
+      progressPercent:
+        unsectionedCount > 0
+          ? Math.round((unsectionedCompleted / unsectionedCount) * 100)
+          : 0,
+    },
+  };
+}
+
+export async function getProjectOverviewCore(
+  projectId: string,
+  userId: string
+): Promise<{
+  overview: ProjectOverview;
+  sectionProgress: ProjectSectionProgress;
+}> {
+  const snapshot = await loadProjectAnalyticsSnapshot(
+    projectId,
+    userId,
+    "overview"
+  );
+
+  return {
+    overview: buildOverviewFromSnapshot(projectId, snapshot),
+    sectionProgress: buildSectionProgressFromSnapshot(snapshot),
+  };
+}
+
+export async function getProjectOverview(
+  projectId: string,
+  userId: string
+): Promise<ProjectOverview> {
+  const startedAt = performance.now();
+
+  try {
+    const snapshot = await loadProjectAnalyticsSnapshot(
+      projectId,
+      userId,
+      "overview"
+    );
+    return buildOverviewFromSnapshot(projectId, snapshot);
+  } finally {
+    console.log(
+      `[PERF] overview.total: ${(performance.now() - startedAt).toFixed(2)} ms`
+    );
+  }
 }
 
 export async function getProjectSectionProgress(
@@ -478,14 +628,16 @@ export async function getProjectSectionProgress(
 
 
 export async function getProjectWorkflowMetrics(projectId: string, userId: string) {
-  await requireProjectAccess(userId, projectId, "viewer");
+  const snapshot = await loadProjectAnalyticsSnapshot(
+    projectId,
+    userId
+  );
 
-  const segments = await getProjectStatusDuration(projectId);
-  const history = await getProjectHistory(projectId);
-  const workflowEvents = await getProjectAssigneeEvents(projectId);
-  const transitions = extractStatusChange(history);
-  const assigneeHandoffs = extractAssigneeHandoffs(workflowEvents);
-  const deps = await getProjectDeps(projectId);
+  const segments = buildProjectStatusSegments(snapshot);
+  const transitions = extractStatusChange(snapshot.history);
+  const assigneeHandoffs = extractAssigneeHandoffs(
+    snapshot.assigneeEvents
+  );
 
   const waitingSegments = segments.filter((s) => s.status === "waiting");
   const blockedSegments = segments.filter((s) => s.status === "blocked");
@@ -507,7 +659,7 @@ export async function getProjectWorkflowMetrics(projectId: string, userId: strin
 
   return {
     projectId,
-    depCount: deps.length,
+    depCount: snapshot.dependencies.length,
     totalStatusSegments: segments.length,
     waitingSegmentCount: waitingSegments.length,
     blockedSegmentCount: blockedSegments.length,
